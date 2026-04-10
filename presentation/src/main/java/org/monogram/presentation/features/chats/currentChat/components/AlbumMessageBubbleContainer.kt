@@ -3,10 +3,25 @@ package org.monogram.presentation.features.chats.currentChat.components
 import android.content.res.Configuration
 import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -67,8 +82,14 @@ fun AlbumMessageBubbleContainer(
 ) {
     if (messages.isEmpty()) return
 
-    val firstMsg = messages.first()
-    val lastMsg = messages.last()
+    val orderedMessages = remember(messages) {
+        messages
+            .distinctBy { it.id }
+            .sortedWith(compareBy<MessageModel> { it.date }.thenBy { it.id })
+    }
+
+    val firstMsg = orderedMessages.first()
+    val lastMsg = orderedMessages.last()
     val isOutgoing = firstMsg.isOutgoing
 
     val configuration = LocalConfiguration.current
@@ -86,11 +107,39 @@ fun AlbumMessageBubbleContainer(
         }
     }
 
-    val isSameSenderAbove = remember(olderMsg?.senderId, firstMsg.senderId, olderMsg?.date, firstMsg.date) {
-        olderMsg?.senderId == firstMsg.senderId && !shouldShowDate(firstMsg, olderMsg)
+    val isSameSenderAbove = remember(
+        olderMsg?.id,
+        olderMsg?.senderId,
+        olderMsg?.senderName,
+        olderMsg?.senderCustomTitle,
+        olderMsg?.date,
+        firstMsg.senderId,
+        firstMsg.senderName,
+        firstMsg.senderCustomTitle,
+        firstMsg.date
+    ) {
+        shouldGroupSenderBlock(
+            current = firstMsg,
+            neighbor = olderMsg,
+            dateBreak = olderMsg?.let { shouldShowDate(firstMsg, it) } ?: true
+        )
     }
-    val isSameSenderBelow = remember(newerMsg?.senderId, lastMsg.senderId, newerMsg?.date, lastMsg.date) {
-        newerMsg != null && newerMsg.senderId == lastMsg.senderId && !shouldShowDate(newerMsg, lastMsg)
+    val isSameSenderBelow = remember(
+        newerMsg?.id,
+        newerMsg?.senderId,
+        newerMsg?.senderName,
+        newerMsg?.senderCustomTitle,
+        newerMsg?.date,
+        lastMsg.senderId,
+        lastMsg.senderName,
+        lastMsg.senderCustomTitle,
+        lastMsg.date
+    ) {
+        shouldGroupSenderBlock(
+            current = lastMsg,
+            neighbor = newerMsg,
+            dateBreak = newerMsg?.let { shouldShowDate(it, lastMsg) } ?: true
+        )
     }
 
     val topSpacing = if (isChannel && !isSameSenderAbove) 12.dp else 2.dp
@@ -111,7 +160,7 @@ fun AlbumMessageBubbleContainer(
                 canReply = canReply,
                 dragOffsetX = dragOffsetX,
                 scope = rememberCoroutineScope(),
-                onReplySwipe = { onReplySwipe(messages.first()) },
+                onReplySwipe = { onReplySwipe(lastMsg) },
                 maxWidth = maxWidth.value
             )
             .pointerInput(Unit) {
@@ -139,13 +188,17 @@ fun AlbumMessageBubbleContainer(
             verticalAlignment = Alignment.Bottom
         ) {
             if (isGroup && !isOutgoing && !isChannel) {
-                Avatar(
-                    path = firstMsg.senderAvatar,
-                    fallbackPath = firstMsg.senderPersonalAvatar,
-                    name = firstMsg.senderName,
-                    size = 40.dp,
-                    onClick = { toProfile(firstMsg.senderId) }
-                )
+                if (!isSameSenderBelow) {
+                    Avatar(
+                        path = firstMsg.senderAvatar,
+                        fallbackPath = firstMsg.senderPersonalAvatar,
+                        name = firstMsg.senderName,
+                        size = 40.dp,
+                        onClick = { toProfile(firstMsg.senderId) }
+                    )
+                } else {
+                    Spacer(modifier = Modifier.width(40.dp))
+                }
                 Spacer(modifier = Modifier.width(8.dp))
             }
 
@@ -165,7 +218,7 @@ fun AlbumMessageBubbleContainer(
                             }
                         }
                 ) {
-                    if (isGroup && !isOutgoing && !isChannel) {
+                    if (isGroup && !isOutgoing && !isChannel && !isSameSenderAbove) {
                         Text(
                             text = firstMsg.senderName,
                             style = MaterialTheme.typography.labelSmall,
@@ -176,7 +229,7 @@ fun AlbumMessageBubbleContainer(
 
                     if (isChannel) {
                         ChannelAlbumMessageBubble(
-                            messages = messages,
+                            messages = orderedMessages,
                             isSameSenderAbove = isSameSenderAbove,
                             isSameSenderBelow = isSameSenderBelow,
                             autoplayGifs = autoplayGifs,
@@ -210,7 +263,7 @@ fun AlbumMessageBubbleContainer(
                         )
                     } else {
                         ChatAlbumMessageBubble(
-                            messages = messages,
+                            messages = orderedMessages,
                             isOutgoing = isOutgoing,
                             isGroup = isGroup,
                             isSameSenderAbove = isSameSenderAbove,

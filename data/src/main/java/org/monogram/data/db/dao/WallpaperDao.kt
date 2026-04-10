@@ -9,11 +9,14 @@ import org.monogram.data.db.model.WallpaperEntity
 
 @Dao
 interface WallpaperDao {
-    @Query("SELECT * FROM wallpapers")
-    fun getWallpapers(): Flow<List<WallpaperEntity>>
+    @Query("SELECT * FROM wallpapers ORDER BY isDefault DESC, id ASC")
+    fun observeWallpapers(): Flow<List<WallpaperEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertWallpapers(wallpapers: List<WallpaperEntity>)
+    suspend fun upsertWallpapers(wallpapers: List<WallpaperEntity>)
+
+    @Query("DELETE FROM wallpapers WHERE id NOT IN (:ids)")
+    suspend fun deleteNotIn(ids: List<Long>)
 
     @Query("DELETE FROM wallpapers")
     suspend fun clearAll()

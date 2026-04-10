@@ -35,6 +35,7 @@ import org.monogram.domain.repository.AppPreferencesProvider
 import org.monogram.domain.repository.NotificationSettingsRepository
 import org.monogram.domain.repository.NotificationSettingsRepository.TdNotificationScope
 import org.monogram.domain.repository.PushProvider
+import org.monogram.domain.repository.StringProvider
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.min
 
@@ -44,7 +45,8 @@ class TdNotificationManager(
     private val appPreferences: AppPreferencesProvider,
     private val notificationSettingsRepository: NotificationSettingsRepository,
     private val notificationSettingDao: NotificationSettingDao,
-    private val fileQueue: FileDownloadQueue
+    private val fileQueue: FileDownloadQueue,
+    private val stringProvider: StringProvider
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val notificationManager = NotificationManagerCompat.from(context)
@@ -118,14 +120,16 @@ class TdNotificationManager(
                     is TdApi.UpdateUser -> userCache[update.user.id] = update.user
                     is TdApi.UpdateFile -> {
                         val file = update.file
-                        if (file.local.isDownloadingCompleted && file.local.path.isNotEmpty()) {
+                        val local = file.local
+                        val localPath = local?.path
+                        if (local?.isDownloadingCompleted == true && !localPath.isNullOrEmpty()) {
                             val callbacks = synchronized(activeDownloads) {
                                 activeDownloads.remove(file.id)
                             }
                             if (callbacks != null) {
                                 scope.launch(Dispatchers.IO) {
                                     val bitmap = try {
-                                        BitmapFactory.decodeFile(file.local.path)
+                                        BitmapFactory.decodeFile(localPath)
                                     } catch (e: Exception) {
                                         null
                                     }
@@ -261,15 +265,17 @@ class TdNotificationManager(
 
     fun isChatMuted(chat: TdApi.Chat): Boolean {
         val cached = notificationSettingsCache[chat.id]
-        val muteFor = cached?.muteFor ?: chat.notificationSettings.muteFor
-        val useDefault = cached?.useDefault ?: chat.notificationSettings.useDefaultMuteFor
+        val chatSettings = chat.notificationSettings
+        val muteFor = cached?.muteFor ?: chatSettings?.muteFor ?: return true
+        val useDefault = cached?.useDefault ?: chatSettings?.useDefaultMuteFor ?: return true
 
         return if (useDefault) {
-            val scopeKey = when (chat.type) {
+            val chatType = chat.type ?: return true
+            val scopeKey = when (chatType) {
                 is TdApi.ChatTypePrivate -> NotificationScopeKey.PRIVATE
                 is TdApi.ChatTypeBasicGroup -> NotificationScopeKey.GROUPS
                 is TdApi.ChatTypeSupergroup -> {
-                    if ((chat.type as TdApi.ChatTypeSupergroup).isChannel) NotificationScopeKey.CHANNELS else NotificationScopeKey.GROUPS
+                    if (chatType.isChannel) NotificationScopeKey.CHANNELS else NotificationScopeKey.GROUPS
                 }
 
                 else -> null
@@ -319,6 +325,18 @@ class TdNotificationManager(
     private fun handleNewMessage(message: TdApi.Message) {
         if (message.isOutgoing) return
 
+        val messageContent = message.content
+        if (messageContent == null) {
+            Log.w(TAG, "Skipping notification for message ${message.id}: content is null")
+            return
+        }
+
+        val senderId = message.senderId
+        if (senderId == null) {
+            Log.w(TAG, "Skipping notification for message ${message.id}: senderId is null")
+            return
+        }
+
         val lastId = lastMessageIds[message.chatId]
         if (lastId != null && message.id <= lastId) {
             return
@@ -327,6 +345,12 @@ class TdNotificationManager(
 
         getChat(message.chatId) { chat ->
             scope.launch {
+                val chatType = chat.type
+                if (chatType == null) {
+                    Log.w(TAG, "Skipping notification for chat ${chat.id}: chat type is null")
+                    return@launch
+                }
+
                 val isMember = checkMembership(chat)
                 if (!isMember) {
                     Log.d(TAG, "Skipping notification for chat ${chat.id}: user is not a member")
@@ -336,7 +360,7 @@ class TdNotificationManager(
                 if (isChatMuted(chat)) return@launch
 
                 val contentText =
-                    if (appPreferences.showSenderOnly.value) "Новое сообщение" else getMessageText(message.content)
+                    if (appPreferences.showSenderOnly.value) stringProvider.getString("notification_new_message") else getMessageText(messageContent)
 
                 if (contentText.isBlank()) return@launch
 
@@ -345,13 +369,13 @@ class TdNotificationManager(
                 val shouldDownloadAvatar =
                     !appPreferences.isPowerSavingMode.value && !appPreferences.batteryOptimizationEnabled.value
 
-                resolveSender(message.senderId, chat, !shouldDownloadAvatar) { senderName, senderBitmap ->
+                resolveSender(senderId, chat, !shouldDownloadAvatar) { senderName, senderBitmap ->
                     if (shouldDownloadAvatar) {
                         downloadAvatar(chat.photo, false) { chatIcon ->
                             appendMessageToNotification(
                                 chatId = chat.id,
                                 messageId = message.id,
-                                chatType = chat.type,
+                                chatType = chatType,
                                 senderName = senderName,
                                 senderBitmap = senderBitmap,
                                 chatIcon = chatIcon ?: senderBitmap,
@@ -363,7 +387,7 @@ class TdNotificationManager(
                         appendMessageToNotification(
                             chatId = chat.id,
                             messageId = message.id,
-                            chatType = chat.type,
+                            chatType = chatType,
                             senderName = senderName,
                             senderBitmap = senderBitmap,
                             chatIcon = senderBitmap,
@@ -377,25 +401,26 @@ class TdNotificationManager(
     }
 
     private suspend fun checkMembership(chat: TdApi.Chat): Boolean {
-        return when (val type = chat.type) {
+        val chatType = chat.type ?: return true
+        return when (chatType) {
             is TdApi.ChatTypePrivate -> true
             is TdApi.ChatTypeBasicGroup -> {
-                if (type.basicGroupId == 0L) {
+                if (chatType.basicGroupId == 0L) {
                     return true
                 }
                 coRunCatching {
-                        val result = gateway.execute(TdApi.GetBasicGroup(type.basicGroupId))
+                    val result = gateway.execute(TdApi.GetBasicGroup(chatType.basicGroupId))
                     result.status is TdApi.ChatMemberStatusMember ||
                             result.status is TdApi.ChatMemberStatusCreator ||
                             result.status is TdApi.ChatMemberStatusAdministrator
                 }.getOrDefault(true)
             }
             is TdApi.ChatTypeSupergroup -> {
-                if (type.supergroupId == 0L) {
+                if (chatType.supergroupId == 0L) {
                     return true
                 }
                 coRunCatching {
-                        val result = gateway.execute(TdApi.GetSupergroup(type.supergroupId))
+                    val result = gateway.execute(TdApi.GetSupergroup(chatType.supergroupId))
                     result.status is TdApi.ChatMemberStatusMember ||
                             result.status is TdApi.ChatMemberStatusCreator ||
                             result.status is TdApi.ChatMemberStatusAdministrator
@@ -477,7 +502,7 @@ class TdNotificationManager(
         )
 
         val remoteInput = RemoteInput.Builder(KEY_TEXT_REPLY)
-            .setLabel("Ответить")
+            .setLabel(stringProvider.getString("menu_reply"))
             .build()
 
         val replyIntent = Intent(context, NotificationReplyReceiver::class.java).apply {
@@ -505,18 +530,18 @@ class TdNotificationManager(
 
         val replyAction = NotificationCompat.Action.Builder(
             android.R.drawable.ic_menu_send,
-            "Ответить",
+            stringProvider.getString("menu_reply"),
             replyPendingIntent
         ).addRemoteInput(remoteInput).build()
 
         val readAction = NotificationCompat.Action.Builder(
             android.R.drawable.ic_menu_view,
-            "Прочитано",
+            stringProvider.getString("action_mark_as_read"),
             readPendingIntent
         ).build()
 
 
-        val myself = Person.Builder().setName("Я").build()
+        val myself = Person.Builder().setName(stringProvider.getString("notification_person_me")).build()
         val messagingStyle = NotificationCompat.MessagingStyle(myself)
         history.forEach { (_, msg) ->
             messagingStyle.addMessage(msg)
@@ -570,7 +595,7 @@ class TdNotificationManager(
         }
 
         if (!appPreferences.inAppPreview.value) {
-            builder.setContentText("Новое сообщение")
+            builder.setContentText(stringProvider.getString("notification_new_message"))
         }
 
         if (chatIcon != null) {
@@ -630,7 +655,7 @@ class TdNotificationManager(
 
         allMessages.take(5).forEach { (chatId, message, _) ->
             val chat = chatCache[chatId]
-            val senderName = message.person?.name ?: "Unknown"
+            val senderName = message.person?.name ?: stringProvider.getString("unknown_user")
             val chatTitle = chat?.title ?: senderName
 
             val sb = SpannableStringBuilder()
@@ -643,8 +668,12 @@ class TdNotificationManager(
             inboxStyle.addLine(sb)
         }
 
-        val summaryTitle = "$totalMessagesCount сообщений из $activeChatsCount чатов"
-        inboxStyle.setSummaryText("$activeChatsCount чатов")
+        val summaryTitle = stringProvider.getString(
+            "notification_summary_title_format",
+            totalMessagesCount,
+            activeChatsCount
+        )
+        inboxStyle.setSummaryText(stringProvider.getString("notification_summary_text_format", activeChatsCount))
         inboxStyle.setBigContentTitle(summaryTitle)
 
         val builder = NotificationCompat.Builder(context, CHANNEL_PRIVATE)
@@ -677,34 +706,34 @@ class TdNotificationManager(
 
             manager.createNotificationChannelGroups(
                 listOf(
-                    NotificationChannelGroup(GROUP_CHATS, "Чаты"),
-                    NotificationChannelGroup(GROUP_OTHER, "Прочее")
+                    NotificationChannelGroup(GROUP_CHATS, stringProvider.getString("notification_group_chats")),
+                    NotificationChannelGroup(GROUP_OTHER, stringProvider.getString("notification_group_other"))
                 )
             )
 
             val channels = listOf(
-                NotificationChannel(CHANNEL_PRIVATE, "Личные чаты", NotificationManager.IMPORTANCE_HIGH).apply {
-                    description = "Уведомления из личных переписок"
+                NotificationChannel(CHANNEL_PRIVATE, stringProvider.getString("notification_channel_private_name"), NotificationManager.IMPORTANCE_HIGH).apply {
+                    description = stringProvider.getString("notification_channel_private_description")
                     group = GROUP_CHATS
                     enableVibration(true)
                     setShowBadge(true)
                     lockscreenVisibility = NotificationCompat.VISIBILITY_PRIVATE
                 },
-                NotificationChannel(CHANNEL_GROUPS, "Группы", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                    description = "Уведомления из групп"
+                NotificationChannel(CHANNEL_GROUPS, stringProvider.getString("notification_channel_groups_name"), NotificationManager.IMPORTANCE_DEFAULT).apply {
+                    description = stringProvider.getString("notification_channel_groups_description")
                     group = GROUP_CHATS
                     enableVibration(true)
                     setShowBadge(true)
                     lockscreenVisibility = NotificationCompat.VISIBILITY_PRIVATE
                 },
-                NotificationChannel(CHANNEL_CHANNELS, "Каналы", NotificationManager.IMPORTANCE_LOW).apply {
-                    description = "Уведомления из каналов"
+                NotificationChannel(CHANNEL_CHANNELS, stringProvider.getString("notification_channel_channels_name"), NotificationManager.IMPORTANCE_LOW).apply {
+                    description = stringProvider.getString("notification_channel_channels_description")
                     group = GROUP_CHATS
                     enableVibration(false)
                     setShowBadge(true)
                 },
-                NotificationChannel(CHANNEL_OTHER, "Другое", NotificationManager.IMPORTANCE_LOW).apply {
-                    description = "Прочие уведомления"
+                NotificationChannel(CHANNEL_OTHER, stringProvider.getString("notification_channel_other_name"), NotificationManager.IMPORTANCE_LOW).apply {
+                    description = stringProvider.getString("notification_channel_other_description")
                     group = GROUP_OTHER
                 }
             )
@@ -713,20 +742,42 @@ class TdNotificationManager(
         }
     }
 
-    private fun getMessageText(content: TdApi.MessageContent): String {
+    private fun getMessageText(content: TdApi.MessageContent?): String {
+        fun withDetails(base: String, details: String?): String {
+            val cleanDetails = details?.trim().orEmpty()
+            return if (cleanDetails.isEmpty()) base else "$base $cleanDetails"
+        }
+
+        if (content == null) {
+            return stringProvider.getString("reply_content_message")
+        }
+
         return when (content) {
             is TdApi.MessageText -> sanitizeSpoilers(content.text)
-            is TdApi.MessagePhoto -> "📷 Фотография ${sanitizeSpoilers(content.caption)}"
-            is TdApi.MessageVideo -> "📹 Видео ${sanitizeSpoilers(content.caption)}"
-            is TdApi.MessageVoiceNote -> "🎤 Голосовое сообщение"
-            is TdApi.MessageSticker -> "Стикер"
-            is TdApi.MessageAnimation -> "GIF"
-            is TdApi.MessageAudio -> "🎵 Аудио ${content.audio.title}"
-            is TdApi.MessageDocument -> "📄 Файл ${content.document.fileName}"
-            is TdApi.MessageLocation -> "📍 Локация ${content.location.latitude}, ${content.location.longitude}"
-            is TdApi.MessageContact -> "👤 Контакт ${content.contact.firstName} ${content.contact.lastName}"
-            is TdApi.MessagePoll -> "📊 Опрос ${content.poll.question.text}"
-            else -> "Сообщение"
+            is TdApi.MessagePhoto -> withDetails("📷 ${stringProvider.getString("logs_media_photo")}", sanitizeSpoilers(content.caption))
+            is TdApi.MessageVideo -> withDetails("📹 ${stringProvider.getString("logs_media_video")}", sanitizeSpoilers(content.caption))
+            is TdApi.MessageVoiceNote -> "🎤 ${stringProvider.getString("logs_media_voice")}"
+            is TdApi.MessageSticker -> stringProvider.getString("reply_content_sticker")
+            is TdApi.MessageAnimation -> stringProvider.getString("reply_content_gif")
+            is TdApi.MessageAudio -> withDetails("🎵 ${stringProvider.getString("logs_media_audio")}", content.audio?.title)
+            is TdApi.MessageDocument -> withDetails("📄 ${stringProvider.getString("logs_media_document")}", content.document?.fileName)
+            is TdApi.MessageLocation -> {
+                val location = content.location
+                if (location != null) {
+                    "📍 ${stringProvider.getString("location_label")} ${location.latitude}, ${location.longitude}"
+                } else {
+                    "📍 ${stringProvider.getString("location_label")}"
+                }
+            }
+            is TdApi.MessageContact -> withDetails(
+                "👤 ${stringProvider.getString("logs_media_contact")}",
+                listOf(content.contact?.firstName, content.contact?.lastName)
+                    .filterNotNull()
+                    .filter { it.isNotBlank() }
+                    .joinToString(" ")
+            )
+            is TdApi.MessagePoll -> withDetails("📊 ${stringProvider.getString("logs_media_poll")}", content.poll?.question?.text)
+            else -> stringProvider.getString("reply_content_message")
         }
     }
 
@@ -793,16 +844,29 @@ class TdNotificationManager(
 
 
     private fun resolveSender(
-        senderId: TdApi.MessageSender,
+        senderId: TdApi.MessageSender?,
         chat: TdApi.Chat,
         onlyIfLocal: Boolean = false,
         callback: (String, Bitmap?) -> Unit
     ) {
+        val fallbackName = chat.title?.takeIf { it.isNotBlank() } ?: stringProvider.getString("unknown_user")
+
+        if (senderId == null) {
+            downloadFile(chat.photo?.small, onlyIfLocal) { bitmap ->
+                callback(fallbackName, bitmap)
+            }
+            return
+        }
+
         when (senderId) {
             is TdApi.MessageSenderUser -> {
                 getUser(senderId.userId) { user ->
+                    val fullName = listOf(user.firstName, user.lastName)
+                        .filterNotNull()
+                        .filter { it.isNotBlank() }
+                        .joinToString(" ")
                     val name =
-                        if (chat.type is TdApi.ChatTypePrivate) chat.title else "${user.firstName} ${user.lastName}".trim()
+                        if (chat.type is TdApi.ChatTypePrivate) fallbackName else fullName.ifBlank { fallbackName }
                     val file =
                         user.profilePhoto?.small ?: if (chat.type is TdApi.ChatTypePrivate) chat.photo?.small else null
                     downloadFile(file, onlyIfLocal) { bitmap ->
@@ -813,7 +877,7 @@ class TdNotificationManager(
 
             is TdApi.MessageSenderChat -> {
                 getChat(senderId.chatId) { senderChat ->
-                    val name = senderChat.title
+                    val name = senderChat.title?.takeIf { it.isNotBlank() } ?: fallbackName
                     downloadFile(senderChat.photo?.small, onlyIfLocal) { bitmap ->
                         callback(name, bitmap)
                     }
@@ -821,9 +885,8 @@ class TdNotificationManager(
             }
 
             else -> {
-                val name = chat.title
                 downloadFile(chat.photo?.small, onlyIfLocal) { bitmap ->
-                    callback(name, bitmap)
+                    callback(fallbackName, bitmap)
                 }
             }
         }
@@ -849,11 +912,13 @@ class TdNotificationManager(
             return
         }
 
-        if (file.local.isDownloadingCompleted && file.local.path.isNotEmpty()) {
+        val local = file.local
+        val localPath = local?.path
+        if (local?.isDownloadingCompleted == true && !localPath.isNullOrEmpty()) {
             val bitmap = try {
-                BitmapFactory.decodeFile(file.local.path)
+                BitmapFactory.decodeFile(localPath)
             } catch (e: Exception) {
-                Log.e(TAG, "Error decoding file: ${file.local.path}", e)
+                Log.e(TAG, "Error decoding file: $localPath", e)
                 null
             }
 

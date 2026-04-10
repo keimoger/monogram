@@ -68,6 +68,7 @@ import org.monogram.data.infra.DataMemoryPressureHandler
 import org.monogram.data.infra.DefaultDispatcherProvider
 import org.monogram.data.infra.FileDownloadQueue
 import org.monogram.data.infra.FileMessageRegistry
+import org.monogram.data.infra.FileObserverHub
 import org.monogram.data.infra.FileUpdateHandler
 import org.monogram.data.infra.OfflineWarmup
 import org.monogram.data.infra.SponsorSyncManager
@@ -250,7 +251,8 @@ val dataModule = module {
                 MonogramMigrations.MIGRATION_26_27,
                 MonogramMigrations.MIGRATION_27_28,
                 MonogramMigrations.MIGRATION_28_29,
-                MonogramMigrations.MIGRATION_29_30
+                MonogramMigrations.MIGRATION_29_30,
+                MonogramMigrations.MIGRATION_30_31
             )
             .fallbackToDestructiveMigration(dropAllTables = true)
             .build()
@@ -309,6 +311,7 @@ val dataModule = module {
             scope = get(),
             gateway = get(),
             fileQueue = get(),
+            fileObserverHub = get(),
             keyValueDao = get(),
             cacheProvider = get()
         )
@@ -325,8 +328,8 @@ val dataModule = module {
             remote = get(),
             chatLocal = get(),
             gateway = get(),
-            updates = get(),
-            fileQueue = get()
+            fileQueue = get(),
+            fileObserverHub = get()
         )
     }
 
@@ -386,7 +389,7 @@ val dataModule = module {
     }
 
     single {
-        ChatMapper(get())
+        ChatMapper(get(), get())
     }
 
     single {
@@ -548,8 +551,8 @@ val dataModule = module {
     single<WallpaperRepository> {
         WallpaperRepositoryImpl(
             remote = get(),
-            updates = get(),
             wallpaperDao = get(),
+            fileObserverHub = get(),
             dispatchers = get(),
             scope = get()
         )
@@ -579,6 +582,7 @@ val dataModule = module {
             cache = get(),
             cacheProvider = get(),
             updates = get(),
+            fileObserverHub = get(),
             dispatchers = get(),
             attachBotDao = get(),
             scope = get()
@@ -673,6 +677,13 @@ val dataModule = module {
     }
 
     single {
+        FileObserverHub(
+            queue = get(),
+            fileUpdateHandler = get()
+        )
+    }
+
+    single {
         DataMemoryPressureHandler(
             chatsListRepository = get(),
             fileUpdateHandler = get()
@@ -753,8 +764,7 @@ val dataModule = module {
     single<StreamingRepository> {
         StreamingRepositoryImpl(
             fileDataSource = get(),
-            updates = get(),
-            scope = get()
+            fileObserverHub = get()
         )
     }
 
@@ -796,5 +806,5 @@ val dataModule = module {
         )
     }
 
-    single(createdAtStart = true) { TdNotificationManager(androidContext(), get(), get(), get(), get(), get()) }
+    single(createdAtStart = true) { TdNotificationManager(androidContext(), get(), get(), get(), get(), get(), get()) }
 }

@@ -6,7 +6,18 @@ import android.content.ClipData
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -17,9 +28,22 @@ import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Person
-import androidx.compose.material3.*
+import androidx.compose.material3.BottomSheetDefaults
+import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
-import androidx.compose.runtime.*
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -28,6 +52,7 @@ import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -36,25 +61,44 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.window.core.layout.WindowSizeClass
 import com.arkivanov.decompose.extensions.compose.subscribeAsState
+import org.koin.compose.koinInject
 import org.monogram.domain.models.UserStatusType
 import org.monogram.domain.models.UserTypeEnum
 import org.monogram.presentation.R
-import org.monogram.presentation.core.ui.*
+import org.monogram.presentation.core.ui.CollapsingToolbarScaffold
+import org.monogram.presentation.core.ui.ConfirmationSheet
+import org.monogram.presentation.core.ui.ItemPosition
+import org.monogram.presentation.core.ui.rememberCollapsingToolbarScaffoldState
+import org.monogram.presentation.core.ui.rememberShimmerBrush
+import org.monogram.presentation.core.util.DateFormatManager
+import org.monogram.presentation.core.util.LocalTabletInterfaceEnabled
 import org.monogram.presentation.core.util.ScrollStrategy
 import org.monogram.presentation.core.util.getUserStatusText
 import org.monogram.presentation.features.chats.chatList.components.SettingsTextField
-import org.monogram.presentation.features.profile.components.*
+import org.monogram.presentation.features.profile.components.ProfileHeaderTransformed
+import org.monogram.presentation.features.profile.components.ProfileInfoSection
+import org.monogram.presentation.features.profile.components.ProfileInfoSectionSkeleton
+import org.monogram.presentation.features.profile.components.ProfilePermissionsDialog
+import org.monogram.presentation.features.profile.components.ProfileQRDialog
+import org.monogram.presentation.features.profile.components.ProfileReportDialog
+import org.monogram.presentation.features.profile.components.ProfileTOSDialog
+import org.monogram.presentation.features.profile.components.ProfileTopBar
+import org.monogram.presentation.features.profile.components.profileMediaSection
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileContent(component: ProfileComponent) {
     val state by component.state.subscribeAsState()
     val adaptiveInfo = currentWindowAdaptiveInfo()
-    val isTablet = adaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND)
+    val isTabletInterfaceEnabled = LocalTabletInterfaceEnabled.current
+    val isTablet =
+        adaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND) && isTabletInterfaceEnabled
     val localClipboard = LocalClipboard.current
     val context = LocalContext.current
     val collapsingToolbarState = rememberCollapsingToolbarScaffoldState()
 
+    val dateFormatManager: DateFormatManager = koinInject()
+    val timeFormat = dateFormatManager.getHourMinuteFormat()
 
     val chat = state.chat
     val user = state.user
@@ -77,36 +121,30 @@ fun ProfileContent(component: ProfileComponent) {
             .ifBlank { unknownTitle }
     }
 
-    val membersCountFormat = stringResource(R.string.members_count_format)
     val membersOnlineCountFormat = stringResource(R.string.members_online_count_format)
     val ownProfileSubtitle = stringResource(R.string.menu_my_profile_subtitle)
-    val subtitle = remember(
-        user,
-        chat,
-        isCurrentUserProfile,
-        membersCountFormat,
-        membersOnlineCountFormat,
-        ownProfileSubtitle
-    ) {
-        when {
-            chat?.isGroup == true || chat?.isChannel == true -> {
-                val members = String.format(membersCountFormat, chat.memberCount)
-                if (chat.onlineCount > 0) String.format(
-                    membersOnlineCountFormat,
-                    members,
-                    chat.onlineCount
-                ) else members
-            }
-
-            isCurrentUserProfile -> {
-                user.username
-                    ?.takeIf { it.isNotBlank() }
-                    ?.let { "$ownProfileSubtitle • @$it" }
-                    ?: ownProfileSubtitle
-            }
-
-            else -> getUserStatusText(user, context)
+    val subtitle = when {
+        chat?.isGroup == true || chat?.isChannel == true -> {
+            val members = pluralStringResource(
+                R.plurals.members_count_format,
+                chat.memberCount,
+                chat.memberCount
+            )
+            if (chat.onlineCount > 0) String.format(
+                membersOnlineCountFormat,
+                members,
+                chat.onlineCount
+            ) else members
         }
+
+        isCurrentUserProfile -> {
+            user.username
+                ?.takeIf { it.isNotBlank() }
+                ?.let { "$ownProfileSubtitle • @$it" }
+                ?: ownProfileSubtitle
+        }
+
+        else -> getUserStatusText(user, context, timeFormat)
     }
 
     val isOnline = user?.type != UserTypeEnum.BOT && user?.userStatus == UserStatusType.ONLINE
@@ -298,7 +336,7 @@ fun ProfileContent(component: ProfileComponent) {
                     columns = GridCells.Fixed(3),
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = if (isTablet) 12.dp else 16.dp)
+                        .padding(horizontal = if (isTablet) 12.dp else 0.dp)
                         .clip(RoundedCornerShape(16.dp))
                         .background(MaterialTheme.colorScheme.background),
                     horizontalArrangement = Arrangement.spacedBy(2.dp),

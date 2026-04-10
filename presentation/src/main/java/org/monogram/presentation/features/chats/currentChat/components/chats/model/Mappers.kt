@@ -7,7 +7,14 @@ import org.monogram.domain.models.MessageEntityType
  * Gets text part for current [MessageEntity]
  **/
 internal infix fun String.blockFor(entity: MessageEntity): String =
-    this.substring(entity.offset, entity.offset + entity.length)
+    safeSubstring(entity.offset, entity.offset.toLong() + entity.length.toLong())
+
+private fun String.safeSubstring(start: Int, end: Long): String {
+    if (isEmpty()) return ""
+    val safeStart = start.coerceIn(0, length)
+    val safeEnd = end.coerceIn(safeStart.toLong(), length.toLong()).toInt()
+    return substring(safeStart, safeEnd)
+}
 
 /**
  * Checks if [MessageEntityType] is block element

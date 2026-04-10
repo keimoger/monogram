@@ -8,17 +8,63 @@ import com.arkivanov.essenty.lifecycle.doOnStop
 import com.arkivanov.mvikotlin.extensions.coroutines.labels
 import com.arkivanov.mvikotlin.extensions.coroutines.stateFlow
 import com.arkivanov.mvikotlin.main.store.DefaultStoreFactory
-import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.withContext
 import org.monogram.core.DispatcherProvider
 import org.monogram.domain.managers.DistrManager
-import org.monogram.domain.models.*
-import org.monogram.domain.repository.*
+import org.monogram.domain.models.BotMenuButtonModel
+import org.monogram.domain.models.ChatPermissionsModel
+import org.monogram.domain.models.ChatViewportCacheEntry
+import org.monogram.domain.models.GifModel
+import org.monogram.domain.models.InlineKeyboardButtonModel
+import org.monogram.domain.models.KeyboardButtonModel
+import org.monogram.domain.models.MessageEntity
+import org.monogram.domain.models.MessageModel
+import org.monogram.domain.models.MessageSendOptions
+import org.monogram.domain.models.MessageViewerModel
+import org.monogram.domain.models.UserModel
+import org.monogram.domain.models.WallpaperModel
+import org.monogram.domain.repository.BotPreferencesProvider
+import org.monogram.domain.repository.BotRepository
+import org.monogram.domain.repository.CacheProvider
+import org.monogram.domain.repository.ChatInfoRepository
+import org.monogram.domain.repository.ChatListRepository
+import org.monogram.domain.repository.ChatMembersFilter
+import org.monogram.domain.repository.ChatOperationsRepository
+import org.monogram.domain.repository.ForumTopicsRepository
+import org.monogram.domain.repository.GifRepository
+import org.monogram.domain.repository.InlineBotRepository
+import org.monogram.domain.repository.MessageDisplayer
+import org.monogram.domain.repository.MessageRepository
+import org.monogram.domain.repository.PaymentRepository
+import org.monogram.domain.repository.PrivacyRepository
+import org.monogram.domain.repository.StickerRepository
+import org.monogram.domain.repository.UserRepository
+import org.monogram.domain.repository.WallpaperRepository
 import org.monogram.presentation.core.util.AppPreferences
 import org.monogram.presentation.core.util.IDownloadUtils
 import org.monogram.presentation.core.util.componentScope
-import org.monogram.presentation.features.chats.currentChat.impl.*
+import org.monogram.presentation.features.chats.currentChat.impl.loadChatInfo
+import org.monogram.presentation.features.chats.currentChat.impl.loadDraft
+import org.monogram.presentation.features.chats.currentChat.impl.loadMessages
+import org.monogram.presentation.features.chats.currentChat.impl.loadPinnedMessage
+import org.monogram.presentation.features.chats.currentChat.impl.loadScheduledMessages
+import org.monogram.presentation.features.chats.currentChat.impl.loadWallpapers
+import org.monogram.presentation.features.chats.currentChat.impl.observePreferences
+import org.monogram.presentation.features.chats.currentChat.impl.observeUserUpdates
+import org.monogram.presentation.features.chats.currentChat.impl.setupMessageCollectors
+import org.monogram.presentation.features.chats.currentChat.impl.setupPinnedMessageCollector
 import org.monogram.presentation.root.AppComponentContext
 import org.monogram.presentation.settings.storage.CacheController
 import java.io.File
@@ -103,6 +149,7 @@ class DefaultChatComponent(
             scrollToMessageId = initialMessageId,
             highlightedMessageId = initialMessageId,
             lastScrollPosition = cacheProvider.getChatScrollPosition(chatId),
+            lastSavedViewport = cacheProvider.getChatViewport(chatId, null),
             isInstalledFromGooglePlay = distrManager.isInstalledFromGooglePlay()
         )
     )
@@ -130,6 +177,9 @@ class DefaultChatComponent(
 
         lifecycle.doOnStop {
             autoLoadJob?.cancel()
+            _state.value.lastSavedViewport?.let { viewport ->
+                cacheProvider.saveChatViewport(chatId, _state.value.currentTopicId, viewport)
+            }
         }
 
         lifecycle.doOnResume {
@@ -352,6 +402,8 @@ class DefaultChatComponent(
 
     override fun onScrollToMessageConsumed() = store.accept(ChatStore.Intent.ScrollToMessageConsumed)
 
+    override fun onScrollCommandConsumed() = store.accept(ChatStore.Intent.ScrollCommandConsumed)
+
     override fun onScrollToBottom() = store.accept(ChatStore.Intent.ScrollToBottom)
 
     override fun onDownloadFile(fileId: Int) {
@@ -367,14 +419,37 @@ class DefaultChatComponent(
     }
 
     override fun updateScrollPosition(messageId: Long) {
-        if (_state.value.currentTopicId == null) {
-            cacheProvider.saveChatScrollPosition(chatId, messageId)
+        updateViewport(
+            ChatViewportCacheEntry(
+                anchorMessageId = messageId,
+                anchorOffsetPx = 0,
+                atBottom = messageId == 0L
+            )
+        )
+    }
+
+    override fun updateViewport(viewport: ChatViewportCacheEntry) {
+        val threadId = _state.value.currentTopicId
+        cacheProvider.saveChatViewport(chatId, threadId, viewport)
+        if (threadId == null) {
+            cacheProvider.saveChatScrollPosition(chatId, viewport.anchorMessageId ?: 0L)
         }
         _state.update {
-            if (it.lastScrollPosition == messageId) it else it.copy(lastScrollPosition = messageId)
+            if (it.lastSavedViewport == viewport && it.lastScrollPosition == (viewport.anchorMessageId
+                    ?: 0L)
+            ) {
+                it
+            } else {
+                it.copy(
+                    lastSavedViewport = viewport,
+                    lastScrollPosition = viewport.anchorMessageId ?: 0L
+                )
+            }
         }
-        if (_state.value.currentScrollMessageId != messageId) {
-            store.accept(ChatStore.Intent.UpdateScrollPosition(messageId))
+        store.accept(ChatStore.Intent.UpdateViewport(viewport))
+        val anchor = viewport.anchorMessageId ?: 0L
+        if (_state.value.currentScrollMessageId != anchor) {
+            store.accept(ChatStore.Intent.UpdateScrollPosition(anchor))
         }
     }
 

@@ -1,6 +1,7 @@
 package org.monogram.data.mapper
 
 import org.drinkless.tdlib.TdApi
+import org.monogram.data.db.model.WallpaperEntity
 import org.monogram.domain.models.ThumbnailModel
 import org.monogram.domain.models.WallpaperModel
 import org.monogram.domain.models.WallpaperSettings
@@ -54,6 +55,74 @@ fun TdApi.Background.toDomain(): WallpaperModel {
         isDefault = this.isDefault
     )
 }
+
+fun WallpaperModel.toEntity(): WallpaperEntity = WallpaperEntity(
+    id = id,
+    slug = slug,
+    title = title,
+    type = type.name,
+    pattern = pattern,
+    documentId = documentId,
+    thumbnailFileId = thumbnail?.fileId,
+    thumbnailWidth = thumbnail?.width,
+    thumbnailHeight = thumbnail?.height,
+    thumbnailLocalPath = thumbnail?.localPath,
+    backgroundColor = settings?.backgroundColor,
+    secondBackgroundColor = settings?.secondBackgroundColor,
+    thirdBackgroundColor = settings?.thirdBackgroundColor,
+    fourthBackgroundColor = settings?.fourthBackgroundColor,
+    intensity = settings?.intensity,
+    rotation = settings?.rotation,
+    isInverted = settings?.isInverted,
+    settingsIsMoving = settings?.isMoving,
+    settingsIsBlurred = settings?.isBlurred,
+    themeName = themeName,
+    isDownloaded = isDownloaded,
+    localPath = localPath,
+    isDefault = isDefault
+)
+
+fun WallpaperEntity.toDomain(): WallpaperModel = WallpaperModel(
+    id = id,
+    slug = slug,
+    title = title,
+    type = runCatching { WallpaperType.valueOf(type) }.getOrDefault(WallpaperType.WALLPAPER),
+    pattern = pattern,
+    documentId = documentId,
+    thumbnail = thumbnailFileId?.let {
+        ThumbnailModel(
+            fileId = it,
+            width = thumbnailWidth ?: 0,
+            height = thumbnailHeight ?: 0,
+            localPath = thumbnailLocalPath
+        )
+    },
+    settings = WallpaperSettings(
+        backgroundColor = backgroundColor,
+        secondBackgroundColor = secondBackgroundColor,
+        thirdBackgroundColor = thirdBackgroundColor,
+        fourthBackgroundColor = fourthBackgroundColor,
+        intensity = intensity,
+        rotation = rotation,
+        isInverted = isInverted,
+        isMoving = settingsIsMoving,
+        isBlurred = settingsIsBlurred
+    ).takeIf {
+        backgroundColor != null ||
+                secondBackgroundColor != null ||
+                thirdBackgroundColor != null ||
+                fourthBackgroundColor != null ||
+                intensity != null ||
+                rotation != null ||
+                isInverted != null ||
+                settingsIsMoving != null ||
+                settingsIsBlurred != null
+    },
+    themeName = themeName,
+    isDownloaded = isDownloaded,
+    localPath = localPath,
+    isDefault = isDefault
+)
 
 fun TdApi.Thumbnail.toDomain(): ThumbnailModel = ThumbnailModel(
     fileId = this.file.id,

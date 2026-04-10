@@ -2,7 +2,13 @@ package org.monogram.presentation.features.chats.currentChat.chatContent
 
 import android.content.ClipData
 import android.util.Log
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.Clipboard
@@ -26,7 +32,7 @@ import org.monogram.presentation.core.util.IDownloadUtils
 import org.monogram.presentation.core.util.coRunCatching
 import org.monogram.presentation.features.chats.currentChat.ChatComponent
 import org.monogram.presentation.features.stickers.ui.menu.MessageOptionsMenu
-import java.util.*
+import java.util.Locale
 
 @Composable
 fun ChatMessageOptionsMenu(
@@ -210,11 +216,20 @@ fun ChatMessageOptionsMenu(
     val canCopyLink = state.isGroup || state.isChannel
     val canPinMessages = state.isAdmin || state.permissions.canPinMessages
     val isPremiumUser = state.currentUser?.isPremium == true
-    val canUseTelegramSummary = isPremiumUser && canSummarize(selectedMessage)
-    val canUseTelegramTranslator = isPremiumUser && canTranslate(selectedMessage)
+    val canUseTelegramSummary =
+        isPremiumUser && !canRestoreOriginalText && canSummarize(selectedMessage)
+    val canUseTelegramTranslator =
+        isPremiumUser && !canRestoreOriginalText && canTranslate(selectedMessage)
     val cocoonAttribution = stringResource(R.string.telegram_cocoon_attribution)
+    val menuMessage = remember(selectedMessage, canRestoreOriginalText) {
+        if (canRestoreOriginalText && selectedMessage.canBeForwarded) {
+            selectedMessage.copy(canBeForwarded = false)
+        } else {
+            selectedMessage
+        }
+    }
     MessageOptionsMenu(
-        message = messageWithReadDate,
+        message = menuMessage.copy(readDate = messageWithReadDate.readDate),
         canWrite = state.canWrite,
         canPinMessages = canPinMessages,
         isPinned = selectedMessage.id == state.pinnedMessage?.id,
@@ -303,17 +318,11 @@ fun ChatMessageOptionsMenu(
             onDismiss()
         },
         onSaveToDownloads = {
-            val path = when (val content = selectedMessage.content) {
-                is MessageContent.Photo -> content.path
-                is MessageContent.Video -> content.path
-                is MessageContent.Gif -> content.path
-                is MessageContent.Document -> content.path
-                is MessageContent.Voice -> content.path
-                is MessageContent.VideoNote -> content.path
-                else -> null
-            }
-            path?.let {
-                downloadUtils.saveFileToDownloads(it)
+            val paths = collectDownloadPaths(selectedMessage, groupedMessages)
+            if (paths.size == 1) {
+                downloadUtils.saveFileToDownloads(paths.first())
+            } else if (paths.isNotEmpty()) {
+                downloadUtils.saveFilesToDownloads(paths)
             }
             onDismiss()
         },
@@ -420,7 +429,7 @@ fun ChatMessageOptionsMenu(
 
 private fun String.withCocoonAttribution(attribution: String): String {
     val cleanText = trim()
-    return "$cleanText\n\n$attribution"
+    return "$cleanText\n\n-----\n$attribution"
 }
 
 private const val TELEGRAM_AI_LOG_TAG = "TelegramAiActions"
@@ -447,5 +456,39 @@ private fun canSummarize(message: MessageModel): Boolean {
         is MessageContent.Document -> content.caption.isNotBlank()
         is MessageContent.Audio -> content.caption.isNotBlank()
         else -> false
+    }
+}
+
+private fun collectDownloadPaths(
+    selectedMessage: MessageModel,
+    groupedMessages: List<GroupedMessageItem>
+): List<String> {
+    val albumMessages = selectedMessage.mediaAlbumId
+        .takeIf { it != 0L }
+        ?.let { albumId ->
+            groupedMessages
+                .filterIsInstance<GroupedMessageItem.Album>()
+                .firstOrNull { album ->
+                    album.albumId == albumId || album.messages.any { it.id == selectedMessage.id }
+                }
+                ?.messages
+        }
+
+    val sourceMessages = albumMessages ?: listOf(selectedMessage)
+    return sourceMessages
+        .mapNotNull { extractDownloadPath(it.content) }
+        .distinct()
+}
+
+private fun extractDownloadPath(content: MessageContent): String? {
+    return when (content) {
+        is MessageContent.Photo -> content.path
+        is MessageContent.Video -> content.path
+        is MessageContent.Gif -> content.path
+        is MessageContent.Document -> content.path
+        is MessageContent.Audio -> content.path
+        is MessageContent.Voice -> content.path
+        is MessageContent.VideoNote -> content.path
+        else -> null
     }
 }

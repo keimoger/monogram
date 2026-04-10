@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.json.Json
 import org.monogram.domain.models.AttachMenuBotModel
+import org.monogram.domain.models.ChatViewportCacheEntry
 import org.monogram.domain.models.FolderModel
 import org.monogram.domain.models.GifModel
 import org.monogram.domain.models.RecentEmojiModel
@@ -102,6 +103,33 @@ class CachePreferences(private val context: Context) : CacheProvider {
         return prefs.getLong("chat_scroll_$chatId", 0L)
     }
 
+    override fun saveChatViewport(chatId: Long, threadId: Long?, viewport: ChatViewportCacheEntry) {
+        prefs.edit()
+            .putString(chatViewportKey(chatId, threadId), Json.encodeToString(viewport))
+            .apply()
+    }
+
+    override fun getChatViewport(chatId: Long, threadId: Long?): ChatViewportCacheEntry? {
+        val directJson = prefs.getString(chatViewportKey(chatId, threadId), null)
+        if (!directJson.isNullOrBlank()) {
+            return try {
+                Json.decodeFromString<ChatViewportCacheEntry>(directJson)
+            } catch (_: Exception) {
+                null
+            }
+        }
+
+        if (threadId != null) return null
+        if (!prefs.contains("chat_scroll_$chatId")) return null
+
+        val legacy = prefs.getLong("chat_scroll_$chatId", 0L)
+        return if (legacy == 0L) {
+            ChatViewportCacheEntry(atBottom = true)
+        } else {
+            ChatViewportCacheEntry(anchorMessageId = legacy, anchorOffsetPx = 0, atBottom = false)
+        }
+    }
+
     override fun setSavedGifs(gifs: List<GifModel>) {
         prefs.edit().putString(KEY_SAVED_GIFS, Json.encodeToString(gifs)).apply()
         _savedGifs.value = gifs
@@ -138,5 +166,9 @@ class CachePreferences(private val context: Context) : CacheProvider {
 
     companion object {
         private const val KEY_SAVED_GIFS = "saved_gifs"
+
+        private fun chatViewportKey(chatId: Long, threadId: Long?): String {
+            return "chat_viewport_${chatId}_${threadId ?: 0L}"
+        }
     }
 }

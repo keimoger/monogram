@@ -1,10 +1,17 @@
 package org.monogram.data.infra
 
 import android.util.Log
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.drinkless.tdlib.TdApi
 import org.monogram.core.DispatcherProvider
 import org.monogram.data.chats.ChatCache
@@ -455,6 +462,11 @@ class FileDownloadQueue(
     }
 
     fun isFileQueued(fileId: Int) = pendingRequests.containsKey(fileId) || activeRequests.containsKey(fileId)
+
+    fun getCachedFile(fileId: Int): TdApi.File? = cache.fileCache[fileId]
+
+    fun getCachedPath(fileId: Int): String? =
+        cache.fileCache[fileId]?.local?.path?.takeIf { it.isNotEmpty() }
 
     fun setChatOpened(chatId: Long) {
         openChatIds.add(chatId)

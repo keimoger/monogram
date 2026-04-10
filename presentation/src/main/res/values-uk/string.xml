@@ -12,6 +12,9 @@
     <string name="current_device_section">Цей пристрій</string>
     <string name="login_requests_section">Запити на вхід</string>
     <string name="active_sessions_section">Активні сеанси</string>
+    <string name="sessions_login_attempt">Спроба входу</string>
+    <string name="sessions_unconfirmed">Не підтверджено</string>
+    <string name="sessions_terminate_action">Завершити сеанс</string>
 
     <string name="cd_navigate_back">Назад</string>
     <string name="cd_close_scanner">Закрити сканер</string>
@@ -245,7 +248,12 @@
 
     <!-- Profile -->
     <string name="unknown_title">Невідомо</string>
-    <string name="members_count_format">Учасники: %1$d</string>
+    <plurals name="members_count_format">
+        <item quantity="one">%1$d учасник</item>
+        <item quantity="few">%1$d учасники</item>
+        <item quantity="many">%1$d учасників</item>
+        <item quantity="other">%1$d учасника</item>
+    </plurals>
     <string name="members_online_count_format">%1$s, %2$d в мережі</string>
     <string name="not_implemented">Ще не реалізовано</string>
     <string name="search_not_implemented">Пошук поки не працює</string>
@@ -597,6 +605,8 @@
     <string name="show_link_previews_subtitle">Відображати прев\'ю для посилань у повідомленнях</string>
     <string name="drag_to_back_title">Свайп для повернення</string>
     <string name="drag_to_back_subtitle">Повернення назад свайпом від лівого краю</string>
+    <string name="tablet_interface_title">Планшетний інтерфейс</string>
+    <string name="tablet_interface_subtitle">Використовувати розділений інтерфейс на планшетах</string>
     <string name="two_line_label">Дві рядки</string>
     <string name="three_line_label">Три рядки</string>
     <string name="show_photos_title">Показувати фотографії</string>
@@ -963,6 +973,7 @@
     <string name="action_cancel">Скасувати</string>
     <string name="action_copy">Копіювати</string>
     <string name="action_paste">Вставити</string>
+    <string name="action_paste_image">Вставити зображення</string>
     <string name="action_cut">Вирізати</string>
     <string name="action_select_all">Виділити все</string>
     <string name="action_apply">Застосувати</string>
@@ -1063,6 +1074,20 @@
     <string name="notification_service_stop">Зупинити</string>
     <string name="notification_service_channel_name">Фонова робота</string>
     <string name="notification_service_channel_description">Сповіщення про роботу програми у фоновому режимі</string>
+    <string name="notification_new_message">Нове повідомлення</string>
+    <string name="notification_person_me">Я</string>
+    <string name="notification_summary_title_format">%1$d повідомлень із %2$d чатів</string>
+    <string name="notification_summary_text_format">%1$d чатів</string>
+    <string name="notification_group_chats">Чати</string>
+    <string name="notification_group_other">Інше</string>
+    <string name="notification_channel_private_name">Приватні чати</string>
+    <string name="notification_channel_private_description">Сповіщення з приватних чатів</string>
+    <string name="notification_channel_groups_name">Групи</string>
+    <string name="notification_channel_groups_description">Сповіщення з груп</string>
+    <string name="notification_channel_channels_name">Канали</string>
+    <string name="notification_channel_channels_description">Сповіщення з каналів</string>
+    <string name="notification_channel_other_name">Інше</string>
+    <string name="notification_channel_other_description">Інші сповіщення</string>
 
     <!-- Chat Mapper / Media Types -->
     <string name="chat_mapper_photo">📷 Фото</string>
@@ -1324,6 +1349,10 @@
     <string name="statistics_vs_previous"> порівняно з минулим пер.</string>
     <string name="statistics_unknown_type">Невідомий тип статистики</string>
     <string name="statistics_data_class_format">Клас даних: %1$s</string>
+    <string name="profile_statistics_preview_contact_format">Контакт: %1$s</string>
+    <string name="profile_statistics_preview_venue_format">Місце: %1$s</string>
+    <string name="profile_statistics_preview_poll_format">Опитування: %1$s</string>
+    <string name="profile_statistics_preview_service_message">Службове повідомлення</string>
 
     <!-- Selection: Viewer Common -->
     <string name="viewer_back">Назад</string>
@@ -1569,7 +1598,6 @@
     <string name="logs_media_unsupported">Непідтримуване повідомлення</string>
 
     <!-- Date and Formats -->
-    <string name="format_time">HH:mm</string>
     <string name="format_duration">%1$02d:%2$02d</string>
 
     <!-- Views Count -->
@@ -1684,6 +1712,17 @@
     <string name="mini_app_permission_request">Запит на дозвіл</string>
     <string name="mini_app_allow">Дозволити</string>
     <string name="mini_app_deny">Відхилити</string>
+    <string name="mini_app_permission_biometry">Біометрія</string>
+    <string name="mini_app_share_contact_title">Поділитися контактом</string>
+    <string name="mini_app_share_contact_message">Дозволити %1$s доступ до вашого номера телефону?</string>
+    <string name="mini_app_allow_messages_title">Дозволити повідомлення</string>
+    <string name="mini_app_allow_messages_message">Дозволити %1$s надсилати вам повідомлення?</string>
+    <string name="mini_app_download_file_title">Завантажити файл</string>
+    <string name="mini_app_download_file_message_generic">Завантажити цей файл?</string>
+    <string name="mini_app_download_file_message_named">Завантажити %1$s?</string>
+    <string name="mini_app_biometric_auth_title">Біометрична автентифікація</string>
+    <string name="mini_app_biometric_auth_subtitle">Підтвердьте особу, щоб продовжити</string>
+    <string name="mini_app_request_location_access_message">Дозволити цьому боту доступ до вашого місцезнаходження?</string>
     <string name="mini_app_bot_permissions">Дозволи бота</string>
     <string name="mini_app_tos_title">Умови використання</string>
     <string name="mini_app_tos_text">Запускаючи цей мінідодаток, ви погоджуєтеся з Умовами надання послуг та Політикою конфіденційності. Бот отримає доступ до основної інформації вашого профілю.</string>
@@ -1899,6 +1938,9 @@
     <string name="editor_word_count">%1$d слів</string>
     <string name="editor_reading_time">≈%1$d хв читання</string>
     <string name="editor_autosave_done">Чернетку збережено</string>
+    <string name="editor_action_copy">Копіювати</string>
+    <string name="editor_action_cut">Вирізати</string>
+    <string name="editor_action_paste">Вставити</string>
     <string name="editor_ai">AI</string>
     <string name="editor_ai_title">AI-редактор</string>
     <string name="editor_ai_tab_translate">Переклад</string>

@@ -1,50 +1,33 @@
 package org.monogram.data.repository
 
 import androidx.media3.datasource.DataSource
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.onStart
 import org.monogram.data.datasource.FileDataSource
 import org.monogram.data.datasource.TelegramStreamingDataSource
-import org.monogram.data.gateway.UpdateDispatcher
+import org.monogram.data.infra.FileObserverHub
 import org.monogram.domain.repository.PlayerDataSourceFactory
 import org.monogram.domain.repository.StreamingRepository
 
 class StreamingRepositoryImpl(
     private val fileDataSource: FileDataSource,
-    private val updates: UpdateDispatcher,
-    private val scope: CoroutineScope
+    private val fileObserverHub: FileObserverHub
 ) : StreamingRepository, PlayerDataSourceFactory {
-
-    private val _fileProgressFlow = MutableSharedFlow<Pair<Int, Float>>(
-        replay = 1,
-        extraBufferCapacity = 100,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST
-    )
-
-    init {
-        scope.launch {
-            updates.file.collect { update ->
-                val file = update.file
-                if (file.size > 0) {
-                    val progress = file.local.downloadedSize.toFloat() / file.size.toFloat()
-                    _fileProgressFlow.emit(file.id to progress)
-                }
-            }
-        }
-    }
 
     override fun createPayload(fileId: Int): DataSource.Factory {
         return TelegramStreamingDataSource.Factory(fileDataSource, fileId)
     }
 
     override fun getDownloadProgress(fileId: Int): Flow<Float> {
-        return _fileProgressFlow
-            .filter { it.first == fileId }
-            .map { it.second }
+        val cachedProgress = fileObserverHub.getCachedFile(fileId)?.let { file ->
+            if (file.size > 0) file.local.downloadedSize.toFloat() / file.size.toFloat() else 0f
+        } ?: 0f
+
+        return fileObserverHub.observeFile(fileId)
+            .map { it.downloadProgress.coerceIn(0f, 1f) }
+            .onStart { emit(cachedProgress) }
+            .distinctUntilChanged()
     }
 }

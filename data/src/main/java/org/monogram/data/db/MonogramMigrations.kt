@@ -265,6 +265,42 @@ object MonogramMigrations {
         }
     }
 
+    val MIGRATION_30_31 = object : Migration(30, 31) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("DROP TABLE IF EXISTS `wallpapers`")
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `wallpapers` (
+                    `id` INTEGER NOT NULL,
+                    `slug` TEXT NOT NULL,
+                    `title` TEXT NOT NULL,
+                    `type` TEXT NOT NULL,
+                    `pattern` INTEGER NOT NULL,
+                    `documentId` INTEGER NOT NULL,
+                    `thumbnailFileId` INTEGER,
+                    `thumbnailWidth` INTEGER,
+                    `thumbnailHeight` INTEGER,
+                    `thumbnailLocalPath` TEXT,
+                    `backgroundColor` INTEGER,
+                    `secondBackgroundColor` INTEGER,
+                    `thirdBackgroundColor` INTEGER,
+                    `fourthBackgroundColor` INTEGER,
+                    `intensity` INTEGER,
+                    `rotation` INTEGER,
+                    `isInverted` INTEGER,
+                    `settingsIsMoving` INTEGER,
+                    `settingsIsBlurred` INTEGER,
+                    `themeName` TEXT,
+                    `isDownloaded` INTEGER NOT NULL,
+                    `localPath` TEXT,
+                    `isDefault` INTEGER NOT NULL,
+                    PRIMARY KEY(`id`)
+                )
+                """.trimIndent()
+            )
+        }
+    }
+
     private fun SupportSQLiteDatabase.addColumn(table: String, column: String, definition: String) {
         execSQL("ALTER TABLE `$table` ADD COLUMN `$column` $definition")
     }

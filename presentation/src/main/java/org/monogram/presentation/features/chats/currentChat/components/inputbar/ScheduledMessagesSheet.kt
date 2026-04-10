@@ -14,9 +14,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import org.koin.compose.koinInject
 import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.MessageModel
 import org.monogram.presentation.R
+import org.monogram.presentation.core.util.DateFormatManager
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -38,6 +40,9 @@ fun ScheduledMessagesSheet(
     val editableScheduledCount = remember(scheduledMessagesSorted) {
         scheduledMessagesSorted.count { canEditScheduledMessage(it) }
     }
+
+    val dateFormatManager: DateFormatManager = koinInject()
+    val timeFormat = dateFormatManager.getHourMinuteFormat()
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -102,7 +107,7 @@ fun ScheduledMessagesSheet(
                         text = if (nextScheduled != null) {
                             stringResource(
                                 R.string.scheduled_messages_summary_next,
-                                formatScheduledTimestamp(nextScheduled.date)
+                                formatScheduledTimestamp(nextScheduled.date, timeFormat)
                             )
                         } else {
                             stringResource(R.string.scheduled_messages_empty)
@@ -245,8 +250,9 @@ private fun ScheduledMessageRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                val dateFormatManager: DateFormatManager = koinInject()
                 Text(
-                    text = formatScheduledTimestamp(message.date),
+                    text = formatScheduledTimestamp(message.date, dateFormatManager.getHourMinuteFormat()),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -300,39 +306,50 @@ private fun ScheduledMessageRow(
     }
 }
 
+@Composable
 private fun messagePreviewText(message: MessageModel): String =
     when (val content = message.content) {
-        is MessageContent.Text -> content.text
-        is MessageContent.Photo -> if (content.caption.isNotBlank()) content.caption else "Photo"
-        is MessageContent.Video -> if (content.caption.isNotBlank()) content.caption else "Video"
-        is MessageContent.Document -> if (content.caption.isNotBlank()) content.caption else "Document"
-        is MessageContent.Gif -> if (content.caption.isNotBlank()) content.caption else "GIF"
-        is MessageContent.Sticker -> "Sticker"
-        is MessageContent.Voice -> "Voice message"
-        is MessageContent.VideoNote -> "Video message"
-        is MessageContent.Audio -> "Audio"
-        is MessageContent.Location -> "Location"
-        is MessageContent.Venue -> content.title
-        is MessageContent.Contact -> listOf(content.firstName, content.lastName).filter { it.isNotBlank() }
-            .joinToString(" ")
+        is MessageContent.Text -> content.text.ifBlank { stringResource(R.string.reply_content_message) }
+        is MessageContent.Photo -> if (content.caption.isNotBlank()) content.caption else stringResource(R.string.reply_content_photo)
+        is MessageContent.Video -> if (content.caption.isNotBlank()) content.caption else stringResource(R.string.reply_content_video)
+        is MessageContent.Document -> if (content.caption.isNotBlank()) content.caption else stringResource(R.string.logs_media_document)
+        is MessageContent.Gif -> if (content.caption.isNotBlank()) content.caption else stringResource(R.string.reply_content_gif)
+        is MessageContent.Sticker -> stringResource(R.string.reply_content_sticker)
+        is MessageContent.Voice -> stringResource(R.string.reply_content_voice_message)
+        is MessageContent.VideoNote -> stringResource(R.string.reply_content_video_message)
+        is MessageContent.Audio -> stringResource(R.string.logs_media_audio)
+        is MessageContent.Location -> stringResource(R.string.location_label)
+        is MessageContent.Venue -> content.title.ifBlank { stringResource(R.string.logs_media_venue) }
+        is MessageContent.Contact -> {
+            val fullName = listOf(content.firstName, content.lastName)
+                .filter { it.isNotBlank() }
+                .joinToString(" ")
+            fullName.ifBlank { stringResource(R.string.logs_media_contact) }
+        }
 
-        is MessageContent.Service -> content.text
-        is MessageContent.Poll -> content.question
-        is MessageContent.Unsupported -> "Unsupported message"
-        else -> "Message"
+        is MessageContent.Service -> content.text.ifBlank { stringResource(R.string.profile_statistics_preview_service_message) }
+        is MessageContent.Poll -> content.question.ifBlank { stringResource(R.string.logs_media_poll) }
+        is MessageContent.Unsupported -> stringResource(R.string.logs_media_unsupported)
     }
 
+@Composable
 private fun scheduledMessageTypeLabel(message: MessageModel): String =
     when (message.content) {
-        is MessageContent.Text -> "Text"
-        is MessageContent.Photo -> "Photo"
-        is MessageContent.Video -> "Video"
-        is MessageContent.Document -> "Document"
-        is MessageContent.Gif -> "GIF"
-        is MessageContent.Sticker -> "Sticker"
-        is MessageContent.Voice -> "Voice"
-        is MessageContent.VideoNote -> "Video message"
-        else -> "Message"
+        is MessageContent.Text -> stringResource(R.string.photo_editor_tool_text)
+        is MessageContent.Photo -> stringResource(R.string.reply_content_photo)
+        is MessageContent.Video -> stringResource(R.string.reply_content_video)
+        is MessageContent.Document -> stringResource(R.string.logs_media_document)
+        is MessageContent.Gif -> stringResource(R.string.reply_content_gif)
+        is MessageContent.Sticker -> stringResource(R.string.reply_content_sticker)
+        is MessageContent.Voice -> stringResource(R.string.logs_media_voice)
+        is MessageContent.VideoNote -> stringResource(R.string.reply_content_video_message)
+        is MessageContent.Audio -> stringResource(R.string.logs_media_audio)
+        is MessageContent.Contact -> stringResource(R.string.logs_media_contact)
+        is MessageContent.Location -> stringResource(R.string.location_label)
+        is MessageContent.Venue -> stringResource(R.string.logs_media_venue)
+        is MessageContent.Poll -> stringResource(R.string.logs_media_poll)
+        is MessageContent.Service -> stringResource(R.string.profile_statistics_preview_service_message)
+        MessageContent.Unsupported -> stringResource(R.string.reply_content_message)
     }
 
 private fun canEditScheduledMessage(message: MessageModel): Boolean =

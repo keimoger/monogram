@@ -1,6 +1,17 @@
 package org.monogram.presentation.features.chats.currentChat.components.inputbar
 
-import androidx.compose.foundation.layout.*
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.net.Uri
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.content.ReceiveContentListener
+import androidx.compose.foundation.content.contentReceiver
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.InlineTextContent
@@ -9,9 +20,23 @@ import androidx.compose.foundation.text.contextmenu.builder.item
 import androidx.compose.foundation.text.contextmenu.data.TextContextMenuKeys
 import androidx.compose.foundation.text.contextmenu.modifier.appendTextContextMenuComponents
 import androidx.compose.foundation.text.contextmenu.modifier.filterTextContextMenuComponents
+import androidx.compose.foundation.text.input.TextFieldLineLimits
+import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -19,8 +44,14 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.*
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -61,9 +92,11 @@ private object RichMenuActionCode
 private object RichMenuActionPre
 private object RichMenuActionLink
 private object RichMenuActionClear
+private object RichMenuActionPasteImage
 
 private data class Interval(val start: Int, val end: Int)
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun InputTextField(
     textValue: TextFieldValue,
@@ -76,15 +109,18 @@ fun InputTextField(
     emojiFontFamily: FontFamily,
     focusRequester: FocusRequester,
     pendingMediaPaths: List<String>,
+    canPasteMediaFromClipboard: Boolean = false,
+    onPasteImages: (List<Uri>) -> Unit = {},
     fontScale: Float = 1f,
     maxEditorHeight: Dp = 140.dp,
     onFocus: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    var showLinkDialog by remember { mutableStateOf(false) }
-    var linkValue by remember { mutableStateOf("https://") }
-    var showPreLanguageDialog by remember { mutableStateOf(false) }
-    var preLanguageValue by remember { mutableStateOf("") }
+    var showLinkDialog by rememberSaveable { mutableStateOf(false) }
+    var linkValue by rememberSaveable { mutableStateOf("https://") }
+    var showPreLanguageDialog by rememberSaveable { mutableStateOf(false) }
+    var preLanguageValue by rememberSaveable { mutableStateOf("") }
+    val context = LocalContext.current
 
     val emojiSize = 20.sp
     val inlineContentMap = remember(knownCustomEmojis.size, knownCustomEmojis.hashCode()) {
@@ -165,6 +201,34 @@ fun InputTextField(
         hasCustomEmojis || emojiFontFamily != FontFamily.Default || textValue.text.contains('@') || hasRichFormatting
 
     val scrollState = rememberScrollState()
+    val editorState = rememberTextFieldState(initialText = textValue.text)
+
+    LaunchedEffect(textValue.text, textValue.selection) {
+        val currentText = editorState.text.toString()
+        val currentSelection = editorState.selection
+        if (currentText != textValue.text || currentSelection != textValue.selection) {
+            editorState.edit {
+                replace(0, length, textValue.text)
+                selection = textValue.selection
+            }
+        }
+    }
+
+    val currentTextValue by rememberUpdatedState(textValue)
+    val currentOnValueChange by rememberUpdatedState(onValueChange)
+    LaunchedEffect(editorState) {
+        snapshotFlow { editorState.text.toString() to editorState.selection }
+            .collect { (editedText, editedSelection) ->
+                val external = currentTextValue
+                if (editedText == external.text && editedSelection == external.selection) return@collect
+                currentOnValueChange(
+                    TextFieldValue(
+                        annotatedString = AnnotatedString(editedText),
+                        selection = editedSelection
+                    )
+                )
+            }
+    }
 
     LaunchedEffect(textValue.text) {
         scrollState.scrollTo(scrollState.maxValue)
@@ -179,6 +243,21 @@ fun InputTextField(
     val richTextPre = stringResource(R.string.rich_text_pre)
     val richTextLink = stringResource(R.string.rich_text_link)
     val richTextClear = stringResource(R.string.rich_text_clear)
+    val actionPasteImage = stringResource(R.string.action_paste_image)
+    val receiveContentListener = remember(context, canPasteMediaFromClipboard, onPasteImages) {
+        ReceiveContentListener { transferableContent ->
+            if (!canPasteMediaFromClipboard) return@ReceiveContentListener transferableContent
+
+            val clipData = transferableContent.clipEntry.clipData
+            val imageUris = extractImageUrisFromClipData(context, clipData)
+            if (imageUris.isEmpty()) {
+                transferableContent
+            } else {
+                onPasteImages(imageUris)
+                null
+            }
+        }
+    }
 
     Box(modifier = modifier.fillMaxWidth()) {
         Box(
@@ -193,6 +272,7 @@ fun InputTextField(
                     .fillMaxWidth()
                     .focusRequester(focusRequester)
                     .onFocusChanged { if (it.isFocused) onFocus() }
+                    .contentReceiver(receiveContentListener)
                     .let { base ->
                         when {
                             !enableContextMenu -> base.filterTextContextMenuComponents { false }
@@ -212,12 +292,23 @@ fun InputTextField(
                                             RichMenuActionCode,
                                             RichMenuActionPre,
                                             RichMenuActionLink,
-                                            RichMenuActionClear -> true
+                                            RichMenuActionClear,
+                                            RichMenuActionPasteImage -> true
 
                                             else -> false
                                         }
                                     }
                                     .appendTextContextMenuComponents {
+                                        if (canPasteMediaFromClipboard) {
+                                            val imageUris = extractImageUrisFromClipboard(context)
+                                            if (imageUris.isNotEmpty()) {
+                                                item(RichMenuActionPasteImage, actionPasteImage) {
+                                                    close()
+                                                    onPasteImages(imageUris)
+                                                }
+                                            }
+                                        }
+
                                         if (hasFormattableSelection(textValue)) {
                                             separator()
                                             item(RichMenuActionBold, richTextBold) {
@@ -327,16 +418,17 @@ fun InputTextField(
                 )
 
                 BasicTextField(
-                    value = textValue,
-                    onValueChange = onValueChange,
+                    state = editorState,
                     modifier = fieldModifier,
                     textStyle = textStyle.copy(
                         color = if (shouldUseOverlayText) Color.Transparent else MaterialTheme.colorScheme.onSurface
                     ),
                     cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                    minLines = 1,
-                    maxLines = Int.MAX_VALUE,
-                    decorationBox = { innerTextField ->
+                    lineLimits = TextFieldLineLimits.MultiLine(
+                        minHeightInLines = 1,
+                        maxHeightInLines = Int.MAX_VALUE
+                    ),
+                    decorator = { innerTextField ->
                         Box(
                             modifier = Modifier.fillMaxWidth(),
                             contentAlignment = Alignment.CenterStart
@@ -450,6 +542,34 @@ fun InputTextField(
             )
         }
     }
+}
+
+private fun extractImageUrisFromClipboard(context: Context): List<Uri> {
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        ?: return emptyList()
+    val clip = clipboard.primaryClip ?: return emptyList()
+    return extractImageUrisFromClipData(context, clip)
+}
+
+private fun extractImageUrisFromClipData(context: Context, clip: ClipData): List<Uri> {
+    if (clip.itemCount <= 0) return emptyList()
+
+    val hasImageMimeType = clip.description?.let { description ->
+        (0 until description.mimeTypeCount).any { index ->
+            description.getMimeType(index)?.startsWith("image/") == true
+        }
+    } == true
+
+    return buildList {
+        for (index in 0 until clip.itemCount) {
+            val item = clip.getItemAt(index)
+            val uri = item.uri ?: item.intent?.data ?: continue
+            val mime = context.contentResolver.getType(uri).orEmpty()
+            if (mime.startsWith("image/") || hasImageMimeType) {
+                add(uri)
+            }
+        }
+    }.distinct()
 }
 
 internal fun mergeInputTextValuePreservingAnnotations(

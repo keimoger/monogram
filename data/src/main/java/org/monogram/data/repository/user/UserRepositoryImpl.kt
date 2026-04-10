@@ -1,8 +1,19 @@
 package org.monogram.data.repository.user
 
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import org.drinkless.tdlib.TdApi
 import org.monogram.data.chats.ChatCache
 import org.monogram.data.core.coRunCatching
@@ -14,7 +25,12 @@ import org.monogram.data.db.model.KeyValueEntity
 import org.monogram.data.gateway.TelegramGateway
 import org.monogram.data.gateway.UpdateDispatcher
 import org.monogram.data.infra.FileDownloadQueue
-import org.monogram.data.mapper.user.*
+import org.monogram.data.infra.FileObserverHub
+import org.monogram.data.mapper.user.extractPersonalAvatarPath
+import org.monogram.data.mapper.user.mapUserFullInfoToChat
+import org.monogram.data.mapper.user.toDomain
+import org.monogram.data.mapper.user.toEntity
+import org.monogram.data.mapper.user.toTdApi
 import org.monogram.domain.models.ChatFullInfoModel
 import org.monogram.domain.models.UserModel
 import org.monogram.domain.repository.CacheProvider
@@ -29,6 +45,7 @@ class UserRepositoryImpl(
     gateway: TelegramGateway,
     private val updates: UpdateDispatcher,
     fileQueue: FileDownloadQueue,
+    private val fileObserverHub: FileObserverHub,
     private val keyValueDao: KeyValueDao,
     private val cacheProvider: CacheProvider,
     private val scope: CoroutineScope
@@ -57,6 +74,7 @@ class UserRepositoryImpl(
         UserUpdateSynchronizer(
             scope = scope,
             updates = updates,
+            fileObserverHub = fileObserverHub,
             userLocal = userLocal,
             keyValueDao = keyValueDao,
             emojiPathCache = mediaResolver.emojiPathCache,

@@ -1,9 +1,24 @@
 package org.monogram.presentation.features.chats.currentChat.components.chats
 
-import androidx.compose.animation.*
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.layout.*
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
@@ -19,8 +34,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import org.koin.compose.koinInject
 import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.MessageModel
+import org.monogram.presentation.core.util.DateFormatManager
 
 
 @Composable
@@ -48,6 +65,9 @@ fun TextMessageBubble(
     val cornerRadius = bubbleRadius.dp
     val smallCorner = (bubbleRadius / 4f).coerceAtLeast(4f).dp
     val tailCorner = 2.dp
+
+    val dateFormatManager: DateFormatManager = koinInject()
+    val timeFormat = dateFormatManager.getHourMinuteFormat()
 
     val bubbleShape = remember(isOutgoing, isSameSenderAbove, isSameSenderBelow, cornerRadius, smallCorner) {
         RoundedCornerShape(
@@ -102,7 +122,6 @@ fun TextMessageBubble(
                     )
                 }
 
-                val inlineContent = rememberMessageInlineContent(content.entities, fontSize)
                 val finalAnnotatedString = buildAnnotatedMessageTextWithEmoji(
                     text = content.text,
                     entities = content.entities,
@@ -116,7 +135,7 @@ fun TextMessageBubble(
                 val finalFontSize = if (isBigEmoji) fontSize * 5f else fontSize
 
                 AnimatedContent(
-                    targetState = finalAnnotatedString,
+                    targetState = Triple(finalAnnotatedString, content.text, content.entities),
                     transitionSpec = {
                         (fadeIn(animationSpec = tween(240, easing = FastOutSlowInEasing)) +
                                 scaleIn(initialScale = 0.97f, animationSpec = tween(240, easing = FastOutSlowInEasing)) +
@@ -128,10 +147,12 @@ fun TextMessageBubble(
                             )
                     },
                     label = "TextEditAnimation"
-                ) { targetText ->
+                ) { (targetText, targetRawText, targetEntities) ->
+                    val inlineContent = rememberMessageInlineContent(targetEntities, fontSize)
                     MessageText(
                         text = targetText,
-                        entities = content.entities,
+                        rawText = targetRawText,
+                        entities = targetEntities,
                         inlineContent = inlineContent,
                         style = MaterialTheme.typography.bodyLarge.copy(
                             fontSize = finalFontSize.sp,
@@ -176,9 +197,8 @@ fun TextMessageBubble(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                     }
-
                     Text(
-                        text = formatTime(msg.date),
+                        text = formatTime(msg.date, timeFormat),
                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                         color = timeColor
                     )

@@ -1,7 +1,18 @@
 package org.monogram.presentation.features.chats.currentChat.components.inputbar
 
-import androidx.compose.animation.*
-import androidx.compose.foundation.layout.*
+import android.net.Uri
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
@@ -27,6 +38,7 @@ import org.monogram.domain.models.BotCommandModel
 import org.monogram.domain.models.BotMenuButtonModel
 import org.monogram.domain.models.StickerModel
 import org.monogram.presentation.R
+import org.monogram.presentation.core.util.LocalTabletInterfaceEnabled
 
 @Composable
 fun InputTextFieldContainer(
@@ -46,6 +58,8 @@ fun InputTextFieldContainer(
     emojiFontFamily: FontFamily,
     focusRequester: FocusRequester,
     pendingMediaPaths: List<String>,
+    canPasteMediaFromClipboard: Boolean = false,
+    onPasteImages: (List<Uri>) -> Unit = {},
     onFocus: () -> Unit = {},
     onOpenFullScreenEditor: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -55,7 +69,8 @@ fun InputTextFieldContainer(
         shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surfaceVariant
     ) {
-        val isTablet = LocalConfiguration.current.screenWidthDp >= 600
+        val isTablet =
+            LocalConfiguration.current.screenWidthDp >= 600 && LocalTabletInterfaceEnabled.current
 
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -108,6 +123,8 @@ fun InputTextFieldContainer(
                 emojiFontFamily = emojiFontFamily,
                 focusRequester = focusRequester,
                 pendingMediaPaths = pendingMediaPaths,
+                canPasteMediaFromClipboard = canPasteMediaFromClipboard,
+                onPasteImages = onPasteImages,
                 onFocus = onFocus,
                 modifier = Modifier.weight(1f)
             )

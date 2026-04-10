@@ -3,6 +3,7 @@ package org.monogram.domain.repository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import org.monogram.domain.models.AttachMenuBotModel
+import org.monogram.domain.models.ChatViewportCacheEntry
 import org.monogram.domain.models.FolderModel
 import org.monogram.domain.models.GifModel
 import org.monogram.domain.models.RecentEmojiModel
@@ -33,6 +34,9 @@ interface CacheProvider {
 
     fun saveChatScrollPosition(chatId: Long, messageId: Long)
     fun getChatScrollPosition(chatId: Long): Long
+
+    fun saveChatViewport(chatId: Long, threadId: Long?, viewport: ChatViewportCacheEntry)
+    fun getChatViewport(chatId: Long, threadId: Long?): ChatViewportCacheEntry?
 
     fun setSavedGifs(gifs: List<GifModel>)
 

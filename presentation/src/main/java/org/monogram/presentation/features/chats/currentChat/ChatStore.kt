@@ -3,6 +3,7 @@ package org.monogram.presentation.features.chats.currentChat
 import androidx.compose.ui.platform.Clipboard
 import com.arkivanov.mvikotlin.core.store.Store
 import org.monogram.domain.models.ChatPermissionsModel
+import org.monogram.domain.models.ChatViewportCacheEntry
 import org.monogram.domain.models.GifModel
 import org.monogram.domain.models.InlineKeyboardButtonModel
 import org.monogram.domain.models.KeyboardButtonModel
@@ -76,11 +77,13 @@ interface ChatStore : Store<ChatStore.Intent, ChatComponent.State, ChatStore.Lab
         object ShowAllPinnedMessages : Intent()
         object DismissPinnedMessages : Intent()
         object ScrollToMessageConsumed : Intent()
+        object ScrollCommandConsumed : Intent()
         object ScrollToBottom : Intent()
         data class DownloadFile(val fileId: Int) : Intent()
         data class DownloadHighRes(val messageId: Long) : Intent()
         data class CancelDownloadFile(val fileId: Int) : Intent()
         data class UpdateScrollPosition(val messageId: Long) : Intent()
+        data class UpdateViewport(val viewport: ChatViewportCacheEntry) : Intent()
         data class BottomReached(val isAtBottom: Boolean) : Intent()
         object HighlightConsumed : Intent()
         object Typing : Intent()

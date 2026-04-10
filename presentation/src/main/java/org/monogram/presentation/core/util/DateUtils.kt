@@ -6,6 +6,10 @@ import java.util.Date
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToLong
+import org.monogram.core.date.DateFormatManager as CoreDateFormatManager
+import org.monogram.core.date.DateFormatManagerImpl as CoreDateFormatManagerImpl
+import org.monogram.core.date.Fake12HourDateFormatManagerImpl as CoreFake12HourDateFormatManagerImpl
+import org.monogram.core.date.Fake24HourDateFormatManagerImpl as CoreFake24HourDateFormatManagerImpl
 
 /**
  * Formats date as relative string as for day, week, year, periods and so-on
@@ -14,6 +18,7 @@ import kotlin.math.roundToLong
  * @param now optional current date (for custom formatting or testing)
  **/
 fun Date.toShortRelativeDate(
+    timeFormat: String,
     locale: Locale = Locale.getDefault(),
     now: Date = Date()
 ): String {
@@ -42,7 +47,7 @@ fun Date.toShortRelativeDate(
 
     return when (diffDays) {
         0L -> {
-            SimpleDateFormat("HH:mm", locale).format(this)
+            SimpleDateFormat(timeFormat, locale).format(this)
         }
         in 1..6 -> {
             SimpleDateFormat("EEE", locale).format(this)
@@ -59,3 +64,8 @@ fun Date.toShortRelativeDate(
         }
     }
 }
+
+typealias DateFormatManager = CoreDateFormatManager
+typealias DateFormatManagerImpl = CoreDateFormatManagerImpl
+typealias Fake12HourDateFormatManagerImpl = CoreFake12HourDateFormatManagerImpl
+typealias Fake24HourDateFormatManagerImpl = CoreFake24HourDateFormatManagerImpl

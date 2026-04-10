@@ -44,12 +44,14 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
@@ -120,7 +122,7 @@ fun ChatContentTopBar(
     val canReportChat = topBarState.isGroup || topBarState.isChannel ||
             (otherUserId != null && topBarState.currentUser?.id != otherUserId)
 
-    var showDeleteSheet by remember { mutableStateOf(false) }
+    var showDeleteSheet by rememberSaveable { mutableStateOf(false) }
     var pendingUnpinMessage by remember { mutableStateOf<MessageModel?>(null) }
     val iconButtonShapes = ExpressiveDefaults.iconButtonShapes()
 
@@ -194,7 +196,7 @@ fun ChatContentTopBar(
                                 contentDescription = stringResource(R.string.menu_delete)
                             )
                         }
-                        var showMenu by remember { mutableStateOf(false) }
+                        var showMenu by rememberSaveable { mutableStateOf(false) }
                         Box {
                             IconButton(onClick = {
                                 onOpenMenu()
@@ -296,14 +298,19 @@ fun ChatContentTopBar(
                     )
 
                     topBarState.isGroup -> {
+                        val members = pluralStringResource(
+                            R.plurals.members_count_format,
+                            topBarState.memberCount,
+                            topBarState.memberCount
+                        )
                         if (topBarState.onlineCount > 0) {
                             stringResource(
                                 R.string.members_online_count_format,
-                                stringResource(R.string.members_count_format, topBarState.memberCount),
+                                members,
                                 topBarState.onlineCount
                             )
                         } else {
-                            stringResource(R.string.members_count_format, topBarState.memberCount)
+                            members
                         }
                     }
 

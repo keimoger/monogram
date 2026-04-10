@@ -18,7 +18,9 @@ import org.monogram.domain.models.MessageSendingState
 import org.monogram.domain.models.UserModel
 import org.monogram.domain.repository.ReadUpdate
 import org.monogram.presentation.features.chats.currentChat.AutoDownloadSuppression
+import org.monogram.presentation.features.chats.currentChat.ChatScrollCommand
 import org.monogram.presentation.features.chats.currentChat.DefaultChatComponent
+import org.monogram.presentation.features.chats.currentChat.ScrollAlign
 import java.io.File
 
 
@@ -171,6 +173,11 @@ private suspend fun DefaultChatComponent.updateMessagesUnsafe(
         } else {
             emptyMap()
         }
+        val previousMessagesById = if (replace) {
+            state.messages.associateBy { it.id }
+        } else {
+            emptyMap()
+        }
 
         val isComments = state.rootMessage != null
 
@@ -179,7 +186,7 @@ private suspend fun DefaultChatComponent.updateMessagesUnsafe(
 
         var hasChanges = replace
         filteredNewMessages.forEach { msg ->
-            val previous = messageMap[msg.id]
+            val previous = messageMap[msg.id] ?: previousMessagesById[msg.id]
             val mergedMessage = if (previous != null) mergeSenderVisuals(previous, msg) else msg
             val restoredMessage = if (mergedMessage.reactions.isEmpty()) {
                 val previousReactions = existingReactionsById[msg.id]
@@ -230,7 +237,8 @@ internal fun DefaultChatComponent.loadMessages(force: Boolean = false) {
             it.copy(
                 isLoading = true,
                 isOldestLoaded = false,
-                isLatestLoaded = false
+                isLatestLoaded = false,
+                pendingScrollCommand = null
             )
         }
 
@@ -238,26 +246,75 @@ internal fun DefaultChatComponent.loadMessages(force: Boolean = false) {
             val currentState = _state.value
             val threadId = currentState.currentTopicId
             val isComments = currentState.rootMessage != null
-            val savedScrollPosition = if (threadId == null) cacheProvider.getChatScrollPosition(chatId) else 0L
+            val savedViewport = cacheProvider.getChatViewport(chatId, threadId)
+            _state.update { it.copy(lastSavedViewport = savedViewport) }
+
+            val chat = chatListRepository.getChatById(chatId)
+            val firstUnreadId = chat?.lastReadInboxMessageId?.let { lastRead ->
+                if (chat.unreadCount > 0) {
+                    repositoryMessage.getMessagesNewer(chatId, lastRead, 1, threadId)
+                        .firstOrNull()?.id
+                        ?: lastRead.takeIf { it > 0L }
+                } else {
+                    null
+                }
+            }
 
             if (isComments && threadId != null) {
-                loadComments(threadId)
-            } else if (savedScrollPosition != 0L) {
-                loadAroundMessage(savedScrollPosition, threadId, shouldHighlight = false)
-            } else {
-                val chat = chatListRepository.getChatById(chatId)
-                val firstUnreadId = chat?.lastReadInboxMessageId?.let { lastRead ->
-                    if (chat.unreadCount > 0) {
-                        repositoryMessage.getMessagesNewer(chatId, lastRead, 1, threadId).firstOrNull()?.id
-                            ?: lastRead.takeIf { it > 0L }
-                    } else null
-                }
-
-                if (firstUnreadId != null) {
-                    loadAroundMessage(firstUnreadId, threadId, shouldHighlight = false)
+                val commentsAnchorId = savedViewport?.anchorMessageId
+                if (commentsAnchorId != null && !savedViewport.atBottom) {
+                    loadAroundMessage(
+                        messageId = commentsAnchorId,
+                        threadId = threadId,
+                        shouldHighlight = false,
+                        scrollCommand = ChatScrollCommand.RestoreViewport(
+                            anchorMessageId = commentsAnchorId,
+                            anchorOffsetPx = savedViewport.anchorOffsetPx,
+                            atBottom = false
+                        )
+                    )
                 } else {
-                    loadBottomMessages(threadId)
+                    loadComments(
+                        threadId = threadId,
+                        scrollCommand = ChatScrollCommand.ScrollToBottom(animated = false)
+                    )
                 }
+            } else if (firstUnreadId != null) {
+                loadAroundMessage(
+                    messageId = firstUnreadId,
+                    threadId = threadId,
+                    shouldHighlight = false,
+                    scrollCommand = ChatScrollCommand.JumpToMessage(
+                        messageId = firstUnreadId,
+                        highlight = false,
+                        align = ScrollAlign.Center,
+                        animated = false
+                    )
+                )
+            } else if (savedViewport != null) {
+                if (savedViewport.atBottom || savedViewport.anchorMessageId == null) {
+                    loadBottomMessages(
+                        threadId = threadId,
+                        scrollCommand = ChatScrollCommand.ScrollToBottom(animated = false)
+                    )
+                } else {
+                    val savedAnchorId = savedViewport.anchorMessageId ?: return@launch
+                    loadAroundMessage(
+                        messageId = savedAnchorId,
+                        threadId = threadId,
+                        shouldHighlight = false,
+                        scrollCommand = ChatScrollCommand.RestoreViewport(
+                            anchorMessageId = savedAnchorId,
+                            anchorOffsetPx = savedViewport.anchorOffsetPx,
+                            atBottom = false
+                        )
+                    )
+                }
+            } else {
+                loadBottomMessages(
+                    threadId = threadId,
+                    scrollCommand = ChatScrollCommand.ScrollToBottom(animated = false)
+                )
             }
         } catch (e: CancellationException) {
             throw e
@@ -269,7 +326,10 @@ internal fun DefaultChatComponent.loadMessages(force: Boolean = false) {
     }
 }
 
-internal suspend fun DefaultChatComponent.loadComments(threadId: Long) {
+internal suspend fun DefaultChatComponent.loadComments(
+    threadId: Long,
+    scrollCommand: ChatScrollCommand? = ChatScrollCommand.ScrollToBottom(animated = false)
+) {
     lastLoadedOlderId = 0L
     lastLoadedNewerId = 0L
     val messages = repositoryMessage.getMessagesNewer(chatId, threadId, PAGE_SIZE, threadId)
@@ -280,14 +340,20 @@ internal suspend fun DefaultChatComponent.loadComments(threadId: Long) {
             isAtBottom = false,
             isLatestLoaded = reachedEnd,
             isOldestLoaded = true,
-            scrollToMessageId = messages.firstOrNull()?.id
+            scrollToMessageId = null
         )
     }
     updateMessages(messages, replace = true)
     refreshCachedSenderProfiles(messages)
+    if (scrollCommand != null) {
+        _state.update { it.copy(pendingScrollCommand = scrollCommand) }
+    }
 }
 
-private suspend fun DefaultChatComponent.loadBottomMessages(threadId: Long?) {
+private suspend fun DefaultChatComponent.loadBottomMessages(
+    threadId: Long?,
+    scrollCommand: ChatScrollCommand? = null
+) {
     lastLoadedOlderId = 0L
     lastLoadedNewerId = 0L
 
@@ -330,6 +396,9 @@ private suspend fun DefaultChatComponent.loadBottomMessages(threadId: Long?) {
     val shouldReplaceCachedPreview = !hasCachedPreview || messages.isNotEmpty()
     updateMessages(messages, replace = shouldReplaceCachedPreview)
     refreshCachedSenderProfiles(messages)
+    if (scrollCommand != null) {
+        _state.update { it.copy(pendingScrollCommand = scrollCommand) }
+    }
     if (!isOldestLoaded) {
         delay(100)
         loadMoreMessages()
@@ -339,7 +408,13 @@ private suspend fun DefaultChatComponent.loadBottomMessages(threadId: Long?) {
 private suspend fun DefaultChatComponent.loadAroundMessage(
     messageId: Long,
     threadId: Long?,
-    shouldHighlight: Boolean = true
+    shouldHighlight: Boolean = true,
+    scrollCommand: ChatScrollCommand? = ChatScrollCommand.JumpToMessage(
+        messageId = messageId,
+        highlight = shouldHighlight,
+        align = ScrollAlign.Center,
+        animated = true
+    )
 ) {
     lastLoadedOlderId = 0L
     lastLoadedNewerId = 0L
@@ -350,17 +425,23 @@ private suspend fun DefaultChatComponent.loadAroundMessage(
                 isAtBottom = false,
                 isLatestLoaded = false,
                 isOldestLoaded = false,
-                scrollToMessageId = messageId,
+                scrollToMessageId = null,
                 highlightedMessageId = if (shouldHighlight) messageId else null
             )
         }
         updateMessages(messages, replace = true)
         refreshCachedSenderProfiles(messages)
+        if (scrollCommand != null) {
+            _state.update { it.copy(pendingScrollCommand = scrollCommand) }
+        }
         delay(100)
         loadMoreMessages()
         loadNewerMessages()
     } else {
-        loadBottomMessages(threadId)
+        loadBottomMessages(
+            threadId = threadId,
+            scrollCommand = ChatScrollCommand.ScrollToBottom(animated = false)
+        )
     }
 }
 
@@ -524,11 +605,22 @@ internal fun DefaultChatComponent.scrollToMessageInternal(messageId: Long) {
             it.copy(
                 isLoading = true,
                 isOldestLoaded = false,
-                isLatestLoaded = false
+                isLatestLoaded = false,
+                pendingScrollCommand = null
             )
         }
         try {
-            loadAroundMessage(messageId, _state.value.currentTopicId, shouldHighlight = true)
+            loadAroundMessage(
+                messageId = messageId,
+                threadId = _state.value.currentTopicId,
+                shouldHighlight = true,
+                scrollCommand = ChatScrollCommand.JumpToMessage(
+                    messageId = messageId,
+                    highlight = true,
+                    align = ScrollAlign.Center,
+                    animated = true
+                )
+            )
         } catch (e: Exception) {
             Log.e("DefaultChatComponent", "Failed to scroll to message", e)
         } finally {
@@ -538,18 +630,32 @@ internal fun DefaultChatComponent.scrollToMessageInternal(messageId: Long) {
 }
 
 internal fun DefaultChatComponent.scrollToBottomInternal() {
-    if (_state.value.isLoading) return
+    val currentState = _state.value
+    if (currentState.messages.isNotEmpty() && currentState.isLatestLoaded) {
+        _state.update {
+            it.copy(
+                isAtBottom = true,
+                pendingScrollCommand = ChatScrollCommand.ScrollToBottom(animated = true)
+            )
+        }
+        return
+    }
+    if (currentState.isLoading) return
     cancelAllLoadingJobs()
     messageLoadingJob = scope.launch {
         _state.update {
             it.copy(
                 isLoading = true,
                 isOldestLoaded = false,
-                isLatestLoaded = false
+                isLatestLoaded = false,
+                pendingScrollCommand = null
             )
         }
         try {
-            loadBottomMessages(_state.value.currentTopicId)
+            loadBottomMessages(
+                threadId = _state.value.currentTopicId,
+                scrollCommand = ChatScrollCommand.ScrollToBottom(animated = true)
+            )
         } catch (e: Exception) {
             Log.e("DefaultChatComponent", "Failed to scroll to bottom", e)
         } finally {
@@ -1224,7 +1330,8 @@ internal fun DefaultChatComponent.handleTopicClick(topicId: Int) {
             isOldestLoaded = false,
             isLatestLoaded = false,
             rootMessage = null,
-            isAtBottom = id == null
+            isAtBottom = id == null,
+            pendingScrollCommand = null
         )
     }
     loadMessages(force = true)
@@ -1240,7 +1347,8 @@ internal fun DefaultChatComponent.handleCommentsClick(messageId: Long) {
                 messages = emptyList(),
                 isOldestLoaded = false,
                 isLatestLoaded = false,
-                isAtBottom = false
+                isAtBottom = false,
+                pendingScrollCommand = null
             )
         }
         loadComments(messageId)

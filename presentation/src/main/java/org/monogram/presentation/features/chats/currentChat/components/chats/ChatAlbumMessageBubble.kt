@@ -1,11 +1,22 @@
 package org.monogram.presentation.features.chats.currentChat.components.chats
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -15,9 +26,11 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import org.koin.compose.koinInject
 import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.MessageModel
 import org.monogram.domain.models.MessageSendingState
+import org.monogram.presentation.core.util.DateFormatManager
 import org.monogram.presentation.core.util.IDownloadUtils
 import org.monogram.presentation.features.chats.currentChat.components.CompactMediaMosaic
 
@@ -122,6 +135,9 @@ fun ChatAlbumMessageBubble(
         )
     }
 
+    val dateFormatManager: DateFormatManager = koinInject()
+    val timeFormat = dateFormatManager.getHourMinuteFormat()
+
     val captionMsg = remember(uniqueMessages) {
         uniqueMessages.firstOrNull {
             val content = it.content
@@ -150,7 +166,7 @@ fun ChatAlbumMessageBubble(
     }
 
     val lastMsg = uniqueMessages.last()
-    val formattedTime = remember(lastMsg.date) { formatTime(lastMsg.date) }
+    val formattedTime = remember(lastMsg.date) { formatTime(lastMsg.date, timeFormat) }
     val revealedSpoilers = remember { mutableStateListOf<Int>() }
     var bubblePosition by remember { mutableStateOf(Offset.Zero) }
 
@@ -164,8 +180,20 @@ fun ChatAlbumMessageBubble(
             modifier = Modifier.clip(bubbleShape)
         ) {
             Column {
+                if (isGroup && !isOutgoing && !isSameSenderAbove) {
+                    Box(modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp)) {
+                        MessageSenderName(lastMsg, toProfile = toProfile)
+                    }
+                }
+
+                lastMsg.forwardInfo?.let { forward ->
+                    Box(modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp)) {
+                        ForwardContent(forward, isOutgoing, onForwardClick = toProfile)
+                    }
+                }
+
                 lastMsg.replyToMsg?.let { reply ->
-                    Box(modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)) {
+                    Box(modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp)) {
                         ReplyContent(
                             replyToMsg = reply,
                             isOutgoing = isOutgoing,
@@ -214,6 +242,7 @@ fun ChatAlbumMessageBubble(
 
                         MessageText(
                             text = finalAnnotatedString,
+                            rawText = caption,
                             inlineContent = inlineContent,
                             style = MaterialTheme.typography.bodyLarge.copy(
                                 fontSize = fontSize.sp,
@@ -232,17 +261,15 @@ fun ChatAlbumMessageBubble(
                             onLongClick = { offset -> onLongClick(bubblePosition + offset) }
                         )
 
-                        Row(
-                            modifier = Modifier.align(Alignment.End),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            ChatTimestampInfo(
-                                time = formattedTime,
-                                isRead = lastMsg.isRead,
+                        Box(modifier = Modifier.align(Alignment.End)) {
+                            MessageMetadata(
+                                msg = lastMsg,
                                 isOutgoing = isOutgoing,
-                                sendingState = lastMsg.sendingState,
-                                color = if (isOutgoing) MaterialTheme.colorScheme.onPrimaryContainer.copy(0.6f)
-                                else MaterialTheme.colorScheme.onSurfaceVariant.copy(0.6f)
+                                contentColor = if (isOutgoing) {
+                                    MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                }
                             )
                         }
                     }

@@ -8,6 +8,8 @@ interface IDownloadUtils {
 
     fun saveFileToDownloads(filePath: String)
 
+    fun saveFilesToDownloads(filePaths: List<String>)
+
     fun saveBitmapToGallery(bitmap: Bitmap)
 
     fun copyBitmapToClipboard(bitmap: Bitmap)

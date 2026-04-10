@@ -12,6 +12,9 @@
     <string name="current_device_section">Toto zariadenie</string>
     <string name="login_requests_section">Žiadosti o prihlásenie</string>
     <string name="active_sessions_section">Aktívne relácie</string>
+    <string name="sessions_login_attempt">Pokus o prihlásenie</string>
+    <string name="sessions_unconfirmed">Nepotvrdené</string>
+    <string name="sessions_terminate_action">Ukončiť reláciu</string>
 
     <string name="cd_navigate_back">Späť</string>
     <string name="cd_close_scanner">Zavrieť skener</string>
@@ -255,7 +258,11 @@
 
     <!-- Profile -->
     <string name="unknown_title">Neznáme</string>
-    <string name="members_count_format">%1$d členov</string>
+    <plurals name="members_count_format">
+        <item quantity="one">%1$d člen</item>
+        <item quantity="few">%1$d členovia</item>
+        <item quantity="other">%1$d členov</item>
+    </plurals>
     <string name="members_online_count_format">%1$s, %2$d online</string>
     <string name="not_implemented">Nie je implementované</string>
     <string name="search_not_implemented">Vyhľadávanie nie je implementované</string>
@@ -628,6 +635,8 @@
     <string name="show_link_previews_subtitle">Zobrazovať náhľady odkazov v správach</string>
     <string name="drag_to_back_title">Potiahnutím späť</string>
     <string name="drag_to_back_subtitle">Potiahnutím z ľavého okraja sa vrátiť späť</string>
+    <string name="tablet_interface_title">Tabletové rozhranie</string>
+    <string name="tablet_interface_subtitle">Použiť rozloženie rozdelenej obrazovky na tabletoch</string>
     <string name="two_line_label">Dvojriadkové</string>
     <string name="three_line_label">Trojriadkové</string>
     <string name="show_photos_title">Zobraziť fotografie</string>
@@ -1027,6 +1036,7 @@
     <string name="action_cancel">Zrušiť</string>
     <string name="action_copy">Kopírovať</string>
     <string name="action_paste">Vložiť</string>
+    <string name="action_paste_image">Vložiť obrázok</string>
     <string name="action_cut">Vystrihnúť</string>
     <string name="action_select_all">Vybrať všetko</string>
     <string name="action_apply">Použiť</string>
@@ -1126,6 +1136,20 @@
     <string name="notification_service_stop">Zastaviť</string>
     <string name="notification_service_channel_name">Služba na pozadí</string>
     <string name="notification_service_channel_description">Oznámenie o behu aplikácie na pozadí</string>
+    <string name="notification_new_message">Nová správa</string>
+    <string name="notification_person_me">Ja</string>
+    <string name="notification_summary_title_format">%1$d správ z %2$d chatov</string>
+    <string name="notification_summary_text_format">%1$d chatov</string>
+    <string name="notification_group_chats">Chaty</string>
+    <string name="notification_group_other">Ostatné</string>
+    <string name="notification_channel_private_name">Súkromné chaty</string>
+    <string name="notification_channel_private_description">Upozornenia zo súkromných chatov</string>
+    <string name="notification_channel_groups_name">Skupiny</string>
+    <string name="notification_channel_groups_description">Upozornenia zo skupín</string>
+    <string name="notification_channel_channels_name">Kanály</string>
+    <string name="notification_channel_channels_description">Upozornenia z kanálov</string>
+    <string name="notification_channel_other_name">Ostatné</string>
+    <string name="notification_channel_other_description">Ostatné upozornenia</string>
 
     <!-- Chat Mapper / Media Types -->
     <string name="chat_mapper_photo">Fotografia</string>
@@ -1388,6 +1412,10 @@
     <string name="statistics_vs_previous">oproti predchádzajúcemu</string>
     <string name="statistics_unknown_type">Neznámy typ štatistík</string>
     <string name="statistics_data_class_format">Trieda dát: %1$s</string>
+    <string name="profile_statistics_preview_contact_format">Kontakt: %1$s</string>
+    <string name="profile_statistics_preview_venue_format">Miesto: %1$s</string>
+    <string name="profile_statistics_preview_poll_format">Anketa: %1$s</string>
+    <string name="profile_statistics_preview_service_message">Servisná správa</string>
 
     <!-- Selection: Viewer Common -->
     <string name="viewer_back">Späť</string>
@@ -1633,7 +1661,6 @@
     <string name="logs_media_unsupported">Nepodporovaná správa</string>
 
     <!-- Date and Formats -->
-    <string name="format_time">HH:mm</string>
     <string name="format_duration">%1$02d:%2$02d</string>
 
     <!-- Views Count -->
@@ -1766,6 +1793,17 @@
     <string name="mini_app_permission_request">Žiadosť o oprávnenie</string>
     <string name="mini_app_allow">Povoliť</string>
     <string name="mini_app_deny">Odmietnuť</string>
+    <string name="mini_app_permission_biometry">Biometria</string>
+    <string name="mini_app_share_contact_title">Zdieľať kontakt</string>
+    <string name="mini_app_share_contact_message">Povoliť %1$s prístup k vášmu telefónnemu číslu?</string>
+    <string name="mini_app_allow_messages_title">Povoliť správy</string>
+    <string name="mini_app_allow_messages_message">Povoliť %1$s posielať vám správy?</string>
+    <string name="mini_app_download_file_title">Stiahnuť súbor</string>
+    <string name="mini_app_download_file_message_generic">Stiahnuť tento súbor?</string>
+    <string name="mini_app_download_file_message_named">Stiahnuť %1$s?</string>
+    <string name="mini_app_biometric_auth_title">Biometrické overenie</string>
+    <string name="mini_app_biometric_auth_subtitle">Overte sa, aby ste mohli pokračovať</string>
+    <string name="mini_app_request_location_access_message">Povoliť tomuto botovi prístup k vašej polohe?</string>
     <string name="mini_app_bot_permissions">Oprávnenia bota</string>
     <string name="mini_app_tos_title">Podmienky služby</string>
     <string name="mini_app_tos_text">Spustením tejto mini aplikácie súhlasíte s Podmienkami služby a Zásadami ochrany
@@ -2031,6 +2069,9 @@
     <string name="editor_word_count">%1$d slov</string>
     <string name="editor_reading_time">≈%1$d min čítania</string>
     <string name="editor_autosave_done">Koncept uložený</string>
+    <string name="editor_action_copy">Kopírovať</string>
+    <string name="editor_action_cut">Vystrihnúť</string>
+    <string name="editor_action_paste">Prilepiť</string>
     <string name="editor_ai">AI</string>
     <string name="editor_ai_title">AI editor</string>
     <string name="editor_ai_tab_translate">Preklad</string>

@@ -6,11 +6,13 @@ import org.drinkless.tdlib.TdApi
 import org.monogram.data.datasource.cache.UserLocalDataSource
 import org.monogram.data.db.dao.KeyValueDao
 import org.monogram.data.gateway.UpdateDispatcher
+import org.monogram.data.infra.FileObserverHub
 import java.util.concurrent.ConcurrentHashMap
 
 internal class UserUpdateSynchronizer(
     private val scope: CoroutineScope,
     private val updates: UpdateDispatcher,
+    private val fileObserverHub: FileObserverHub,
     private val userLocal: UserLocalDataSource,
     private val keyValueDao: KeyValueDao,
     private val emojiPathCache: ConcurrentHashMap<Long, String>,
@@ -19,9 +21,19 @@ internal class UserUpdateSynchronizer(
     private val onUserIdChanged: suspend (Long) -> Unit,
     private val onCachedSimCountryIsoChanged: suspend (String?) -> Unit
 ) {
+    private val avatarFileIdToUserIds = ConcurrentHashMap<Int, MutableSet<Long>>()
+    private val userIdToAvatarFileIds = ConcurrentHashMap<Long, Set<Int>>()
+
     fun start() {
         scope.launch {
+            userLocal.getAllUsers().forEach { user ->
+                updateAvatarIndex(user)
+            }
+        }
+
+        scope.launch {
             updates.user.collect { update ->
+                updateAvatarIndex(update.user)
                 onUserUpdated(update.user)
             }
         }
@@ -30,35 +42,31 @@ internal class UserUpdateSynchronizer(
             updates.userStatus.collect { update ->
                 userLocal.getUser(update.userId)?.let { cached ->
                     cached.status = update.status
+                    updateAvatarIndex(cached)
                     onUserUpdated(cached)
                 }
             }
         }
 
         scope.launch {
-            updates.file.collect { update ->
-                val file = update.file
-                if (!file.local.isDownloadingCompleted) return@collect
+            fileObserverHub.fileStates.collect { state ->
+                if (!state.isDownloaded) return@collect
+                val fileId = state.fileId
+                val path = state.path ?: return@collect
 
-                userLocal.getAllUsers().forEach { user ->
-                    val small = user.profilePhoto?.small
-                    val big = user.profilePhoto?.big
-                    if (small?.id == file.id || big?.id == file.id) {
-                        onUserIdChanged(user.id)
-                    }
+                avatarFileIdToUserIds[fileId]?.forEach { userId ->
+                    onUserIdChanged(userId)
                 }
 
-                if (file.local.path.isNotEmpty()) {
-                    val userId = fileIdToUserIdMap.remove(file.id)
-                    if (userId != null) {
-                        userLocal.getUser(userId)?.let { user ->
-                            val emojiId = user.extractEmojiStatusId()
-                            if (emojiId != 0L) {
-                                emojiPathCache[emojiId] = file.local.path
-                            }
+                val userId = fileIdToUserIdMap.remove(fileId)
+                if (userId != null) {
+                    userLocal.getUser(userId)?.let { user ->
+                        val emojiId = user.extractEmojiStatusId()
+                        if (emojiId != 0L) {
+                            emojiPathCache[emojiId] = path
                         }
-                        onUserIdChanged(userId)
                     }
+                    onUserIdChanged(userId)
                 }
             }
         }
@@ -72,5 +80,27 @@ internal class UserUpdateSynchronizer(
 
     companion object {
         private const val KEY_CACHED_SIM_COUNTRY_ISO = "cached_sim_country_iso"
+    }
+
+    private fun updateAvatarIndex(user: TdApi.User) {
+        val newFileIds = buildSet {
+            user.profilePhoto?.small?.id?.takeIf { it != 0 }?.let(::add)
+            user.profilePhoto?.big?.id?.takeIf { it != 0 }?.let(::add)
+        }
+
+        val previousFileIds = userIdToAvatarFileIds.put(user.id, newFileIds) ?: emptySet()
+
+        (previousFileIds - newFileIds).forEach { fileId ->
+            avatarFileIdToUserIds[fileId]?.let { userIds ->
+                userIds.remove(user.id)
+                if (userIds.isEmpty()) {
+                    avatarFileIdToUserIds.remove(fileId)
+                }
+            }
+        }
+
+        (newFileIds - previousFileIds).forEach { fileId ->
+            avatarFileIdToUserIds.getOrPut(fileId) { ConcurrentHashMap.newKeySet() }.add(user.id)
+        }
     }
 }

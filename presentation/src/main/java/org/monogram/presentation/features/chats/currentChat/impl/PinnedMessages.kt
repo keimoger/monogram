@@ -6,7 +6,9 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.monogram.domain.models.MessageModel
+import org.monogram.presentation.features.chats.currentChat.ChatScrollCommand
 import org.monogram.presentation.features.chats.currentChat.DefaultChatComponent
+import org.monogram.presentation.features.chats.currentChat.ScrollAlign
 
 
 internal fun DefaultChatComponent.loadPinnedMessage() {
@@ -53,6 +55,11 @@ internal fun DefaultChatComponent.loadAllPinnedMessages() {
 
 internal fun DefaultChatComponent.loadScheduledMessages() {
     scope.launch {
+        if (!canLoadScheduledMessages()) {
+            _state.update { it.copy(scheduledMessages = emptyList()) }
+            return@launch
+        }
+
         try {
             val scheduledMessages = repositoryMessage.getScheduledMessages(chatId)
             _state.update { it.copy(scheduledMessages = scheduledMessages) }
@@ -60,6 +67,18 @@ internal fun DefaultChatComponent.loadScheduledMessages() {
             Log.e("DefaultChatComponent", "Error loading scheduled messages", e)
         }
     }
+}
+
+private suspend fun DefaultChatComponent.canLoadScheduledMessages(): Boolean {
+    val currentState = _state.value
+    if (currentState.isChannel && !currentState.isAdmin) return false
+    if (currentState.canWrite) return true
+
+    val chat = chatListRepository.getChatById(chatId) ?: return false
+    val canWrite = if (chat.isAdmin) true else chat.permissions.canSendBasicMessages
+    if (chat.isChannel && !chat.isAdmin) return false
+
+    return canWrite
 }
 
 internal fun DefaultChatComponent.setupPinnedMessageCollector() {
@@ -119,7 +138,12 @@ private fun DefaultChatComponent.jumpToMessage(message: MessageModel) {
                 lastLoadedNewerId = 0L
                 _state.update {
                     it.copy(
-                        scrollToMessageId = message.id,
+                        pendingScrollCommand = ChatScrollCommand.JumpToMessage(
+                            messageId = message.id,
+                            highlight = true,
+                            align = ScrollAlign.Center,
+                            animated = true
+                        ),
                         highlightedMessageId = message.id,
                         isAtBottom = false,
                         isLatestLoaded = false,

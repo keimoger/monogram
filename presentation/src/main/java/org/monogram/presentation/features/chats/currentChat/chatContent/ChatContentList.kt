@@ -1,5 +1,6 @@
 package org.monogram.presentation.features.chats.currentChat.chatContent
 
+import android.os.SystemClock
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
@@ -12,7 +13,21 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -22,8 +37,22 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.PushPin
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LoadingIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -50,7 +79,10 @@ import org.monogram.presentation.R
 import org.monogram.presentation.core.ui.Avatar
 import org.monogram.presentation.core.util.IDownloadUtils
 import org.monogram.presentation.features.chats.currentChat.ChatComponent
-import org.monogram.presentation.features.chats.currentChat.components.*
+import org.monogram.presentation.features.chats.currentChat.components.AlbumMessageBubbleContainer
+import org.monogram.presentation.features.chats.currentChat.components.DateSeparator
+import org.monogram.presentation.features.chats.currentChat.components.MessageBubbleContainer
+import org.monogram.presentation.features.chats.currentChat.components.ServiceMessage
 import org.monogram.presentation.features.chats.currentChat.components.channels.ChannelMessageBubbleContainer
 import org.monogram.presentation.features.stickers.ui.view.StickerImage
 import java.io.File
@@ -80,16 +112,14 @@ fun ChatContentList(
 ) {
     val isComments = state.rootMessage != null
     val isScrolling by remember(scrollState) { derivedStateOf { scrollState.isScrollInProgress } }
+    val latestState by rememberUpdatedState(state)
+    var lastOlderLoadTriggerUptimeMs by remember { mutableLongStateOf(0L) }
+    var lastNewerLoadTriggerUptimeMs by remember { mutableLongStateOf(0L) }
+    val loadTriggerThrottleMs = 350L
 
     LaunchedEffect(
         scrollState,
         groupedMessages.size,
-        state.isLoading,
-        state.isLoadingOlder,
-        state.isLoadingNewer,
-        state.isLatestLoaded,
-        state.isOldestLoaded,
-        state.isAtBottom,
         isComments
     ) {
         snapshotFlow { scrollState.layoutInfo.visibleItemsInfo }
@@ -101,24 +131,38 @@ fun ChatContentList(
             }
             .distinctUntilChanged()
             .collect { (firstVisibleIndex, lastVisibleIndex) ->
-                if (state.isLoading || state.isLoadingOlder || state.isLoadingNewer) return@collect
+                val currentState = latestState
+                if (currentState.isLoading || currentState.isLoadingOlder || currentState.isLoadingNewer) return@collect
 
                 val nearStart = firstVisibleIndex <= 2
                 val nearEnd = lastVisibleIndex >= (groupedMessages.size - 3).coerceAtLeast(0)
+                val now = SystemClock.uptimeMillis()
 
                 if (isComments) {
                     if (!scrollState.isScrollInProgress) return@collect
 
-                    if (nearStart && !state.isOldestLoaded) {
-                        component.loadMore()
-                    } else if (nearEnd && !state.isLatestLoaded) {
-                        component.loadNewer()
+                    if (nearStart && !currentState.isOldestLoaded) {
+                        if (now - lastOlderLoadTriggerUptimeMs >= loadTriggerThrottleMs) {
+                            lastOlderLoadTriggerUptimeMs = now
+                            component.loadMore()
+                        }
+                    } else if (nearEnd && !currentState.isLatestLoaded) {
+                        if (now - lastNewerLoadTriggerUptimeMs >= loadTriggerThrottleMs) {
+                            lastNewerLoadTriggerUptimeMs = now
+                            component.loadNewer()
+                        }
                     }
                 } else {
-                    if (nearEnd && !state.isOldestLoaded) {
-                        component.loadMore()
-                    } else if (nearStart && !state.isAtBottom && !state.isLatestLoaded) {
-                        component.loadNewer()
+                    if (nearEnd && !currentState.isOldestLoaded) {
+                        if (now - lastOlderLoadTriggerUptimeMs >= loadTriggerThrottleMs) {
+                            lastOlderLoadTriggerUptimeMs = now
+                            component.loadMore()
+                        }
+                    } else if (nearStart && !currentState.isAtBottom && !currentState.isLatestLoaded) {
+                        if (now - lastNewerLoadTriggerUptimeMs >= loadTriggerThrottleMs) {
+                            lastNewerLoadTriggerUptimeMs = now
+                            component.loadNewer()
+                        }
                     }
                 }
             }
@@ -154,24 +198,22 @@ fun ChatContentList(
         }
 
         if (isComments) {
-            if (state.rootMessage != null) {
-                item(key = "root_header") {
-                    RootMessageSection(
-                        state,
-                        component,
-                        onPhotoClick,
-                        onPhotoDownload,
-                        onVideoClick,
-                        onDocumentClick,
-                        onAudioClick,
-                        onMessageOptionsClick,
-                        onGoToReply,
-                        onViaBotClick,
-                        toProfile,
-                        downloadUtils,
-                        isAnyViewerOpen = isAnyViewerOpen
-                    )
-                }
+            item(key = "root_header") {
+                RootMessageSection(
+                    state,
+                    component,
+                    onPhotoClick,
+                    onPhotoDownload,
+                    onVideoClick,
+                    onDocumentClick,
+                    onAudioClick,
+                    onMessageOptionsClick,
+                    onGoToReply,
+                    onViaBotClick,
+                    toProfile,
+                    downloadUtils,
+                    isAnyViewerOpen = isAnyViewerOpen
+                )
             }
 
             itemsIndexed(
@@ -225,25 +267,6 @@ fun ChatContentList(
                                 .asPaddingValues()
                                 .calculateBottomPadding()
                         )
-                    )
-                }
-            }
-            if (state.rootMessage != null) {
-                item(key = "root_header") {
-                    RootMessageSection(
-                        state,
-                        component,
-                        onPhotoClick,
-                        onPhotoDownload,
-                        onVideoClick,
-                        onDocumentClick,
-                        onAudioClick,
-                        onMessageOptionsClick,
-                        onGoToReply,
-                        onViaBotClick,
-                        toProfile,
-                        downloadUtils,
-                        isAnyViewerOpen = isAnyViewerOpen
                     )
                 }
             }
@@ -908,6 +931,38 @@ private fun isItemSelected(item: GroupedMessageItem, selectedIds: Set<Long>): Bo
         is GroupedMessageItem.Single -> selectedIds.contains(item.message.id)
         is GroupedMessageItem.Album -> item.messages.any { selectedIds.contains(it.id) }
     }
+}
+
+internal fun chatContentLeadingItemsCount(
+    isComments: Boolean,
+    showNavPadding: Boolean,
+    isLoadingOlder: Boolean,
+    isLoadingNewer: Boolean,
+    isAtBottom: Boolean,
+    hasMessages: Boolean
+): Int {
+    return if (isComments) {
+        val loadingOlderTop = if (isLoadingOlder && hasMessages) 1 else 0
+        loadingOlderTop + 1 // root header
+    } else {
+        val navPadding = if (showNavPadding) 1 else 0
+        val loadingNewerBottom = if (isLoadingNewer && !isAtBottom && hasMessages) 1 else 0
+        navPadding + loadingNewerBottom
+    }
+}
+
+internal fun groupedIndexToLazyIndex(
+    groupedIndex: Int,
+    leadingItemsCount: Int
+): Int {
+    return groupedIndex + leadingItemsCount
+}
+
+internal fun lazyIndexToGroupedIndex(
+    lazyIndex: Int,
+    leadingItemsCount: Int
+): Int {
+    return lazyIndex - leadingItemsCount
 }
 
 private fun handlePhotoClick(

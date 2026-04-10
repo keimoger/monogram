@@ -1,13 +1,30 @@
 package org.monogram.presentation.features.chats.currentChat.components.chats
 
 import android.content.Context
-import androidx.compose.animation.*
-import androidx.compose.animation.core.*
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -25,16 +42,19 @@ import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import org.koin.compose.koinInject
 import org.monogram.domain.models.MessageEntity
 import org.monogram.domain.models.MessageEntityType
 import org.monogram.domain.models.MessageModel
 import org.monogram.domain.models.MessageSendingState
+import org.monogram.presentation.core.util.DateFormatManager
 import org.monogram.presentation.core.util.EmojiStyle
 import org.monogram.presentation.features.chats.currentChat.components.channels.formatViews
 import java.io.File
 import java.text.BreakIterator
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Date
+import java.util.Locale
 import kotlin.math.log10
 import kotlin.math.pow
 
@@ -42,24 +62,34 @@ val LocalLinkHandler = staticCompositionLocalOf<(String) -> Unit> {
     { _ -> }
 }
 
-fun formatTime(ts: Int): String =
-    SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(ts.toLong() * 1000))
+fun formatTime(ts: Int, timeFormat: String): String =
+    SimpleDateFormat(timeFormat, Locale.getDefault()).format(Date(ts.toLong() * 1000))
 
 fun formatDuration(seconds: Int): String {
     val m = seconds / 60
     val s = seconds % 60
     return String.format(Locale.getDefault(), "%02d:%02d", m, s)
 }
-fun formatFileSize(size: Long): String {
-    if (size <= 0) return "0 B"
+fun formatFileSize(size: Long, isDownloading: Boolean, downloadProgress: Float): String {
     val units = arrayOf("B", "KB", "MB", "GB", "TB")
-    val digitGroups = (log10(size.toDouble()) / log10(1024.0)).toInt()
-    return String.format(
-        Locale.getDefault(),
-        "%.1f %s",
-        size / 1024.0.pow(digitGroups.toDouble()),
-        units[digitGroups]
-    )
+
+    fun format(value: Double): String {
+        if (value <= 0) return "0 B"
+        val digitGroups = (log10(value) / log10(1024.0)).toInt()
+        return String.format(
+            Locale.US,
+            "%.1f %s",
+            value / 1024.0.pow(digitGroups.toDouble()),
+            units[digitGroups]
+        )
+    }
+
+    return if (isDownloading) {
+        val downloaded = size * downloadProgress
+        "${format(downloaded.toDouble())} / ${format(size.toDouble())}"
+    } else {
+        format(size.toDouble())
+    }
 }
 
 fun getEmojiFontFileName(style: EmojiStyle): String? = when (style) {
@@ -129,8 +159,12 @@ fun isBigEmoji(text: String, entities: List<MessageEntity>): Boolean {
 
     if (emojiEntities.size == 1) {
         val entity = emojiEntities[0]
-        val textBefore = text.substring(0, entity.offset)
-        val textAfter = text.substring(entity.offset + entity.length)
+        val safeStart = entity.offset.coerceIn(0, text.length)
+        val safeEnd = (entity.offset.toLong() + entity.length.toLong())
+            .coerceIn(safeStart.toLong(), text.length.toLong())
+            .toInt()
+        val textBefore = text.substring(0, safeStart)
+        val textAfter = text.substring(safeEnd)
         return textBefore.trim().isEmpty() && textAfter.trim().isEmpty()
     }
 
@@ -226,8 +260,10 @@ fun MessageMetadata(
                 tint = contentColor
             )
         }
+        val dateFormatManager: DateFormatManager = koinInject()
+        val timeFormat = dateFormatManager.getHourMinuteFormat()
         Text(
-            text = formatTime(msg.date),
+            text = formatTime(msg.date, timeFormat),
             style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
             color = contentColor
         )

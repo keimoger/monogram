@@ -301,7 +301,10 @@ fun ChannelVideoMessageBubble(
                                 modifier = Modifier
                                     .align(Alignment.TopStart)
                                     .padding(8.dp)
-                                    .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
+                                    .background(
+                                        Color.Black.copy(alpha = 0.45f),
+                                        RoundedCornerShape(6.dp)
+                                    )
                                     .padding(horizontal = 6.dp, vertical = 2.dp)
                             ) {
                                 Text(
@@ -349,7 +352,10 @@ fun ChannelVideoMessageBubble(
                                 modifier = Modifier
                                     .align(Alignment.BottomEnd)
                                     .padding(6.dp)
-                                    .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
+                                    .background(
+                                        Color.Black.copy(alpha = 0.45f),
+                                        RoundedCornerShape(10.dp)
+                                    )
                                     .padding(horizontal = 6.dp, vertical = 2.dp)
                             ) {
                                 MessageMetadata(msg, msg.isOutgoing, Color.White)
@@ -377,6 +383,7 @@ fun ChannelVideoMessageBubble(
 
                         MessageText(
                             text = finalAnnotatedString,
+                            rawText = content.caption,
                             inlineContent = inlineContent,
                             style = MaterialTheme.typography.bodyLarge.copy(
                                 fontSize = fontSize.sp,

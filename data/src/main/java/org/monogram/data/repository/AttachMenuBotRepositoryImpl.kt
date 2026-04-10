@@ -12,21 +12,26 @@ import org.monogram.data.datasource.remote.SettingsRemoteDataSource
 import org.monogram.data.db.dao.AttachBotDao
 import org.monogram.data.db.model.AttachBotEntity
 import org.monogram.data.gateway.UpdateDispatcher
+import org.monogram.data.infra.FileObserverHub
 import org.monogram.data.mapper.toDomain
 import org.monogram.domain.models.AttachMenuBotModel
+import org.monogram.domain.models.FileLocalModel
 import org.monogram.domain.repository.AttachMenuBotRepository
 import org.monogram.domain.repository.CacheProvider
+import java.util.concurrent.ConcurrentHashMap
 
 class AttachMenuBotRepositoryImpl(
     private val remote: SettingsRemoteDataSource,
     private val cache: SettingsCacheDataSource,
     private val cacheProvider: CacheProvider,
     private val updates: UpdateDispatcher,
+    private val fileObserverHub: FileObserverHub,
     private val dispatchers: DispatcherProvider,
     private val attachBotDao: AttachBotDao,
     private val scope: CoroutineScope
 ) : AttachMenuBotRepository {
     private val attachMenuBots = MutableStateFlow<List<AttachMenuBotModel>>(cacheProvider.attachBots.value)
+    private val sideMenuIconFileToBotId = ConcurrentHashMap<Int, Long>()
 
     init {
         scope.launch {
@@ -35,6 +40,7 @@ class AttachMenuBotRepositoryImpl(
                 val bots = update.bots.map { it.toDomain() }
                 attachMenuBots.value = bots
                 cacheProvider.setAttachBots(bots)
+                rebuildTrackedIcons(bots)
 
                 saveAttachBotsToDb(bots)
 
@@ -49,16 +55,10 @@ class AttachMenuBotRepositoryImpl(
         }
 
         scope.launch {
-            updates.file.collect { update ->
-                val currentBots = attachMenuBots.value
-                if (currentBots.any { it.icon?.icon?.id == update.file.id }) {
-                    cache.getAttachMenuBots()?.let { bots ->
-                        val domainBots = bots.map { it.toDomain() }
-                        attachMenuBots.value = domainBots
-                        cacheProvider.setAttachBots(domainBots)
-                        saveAttachBotsToDb(domainBots)
-                    }
-                }
+            fileObserverHub.fileStates.collect { state ->
+                if (!state.isDownloaded || state.path.isNullOrBlank()) return@collect
+                val botId = sideMenuIconFileToBotId[state.fileId] ?: return@collect
+                applyBotIconPath(botId, state.fileId, state.path)
             }
         }
 
@@ -74,6 +74,7 @@ class AttachMenuBotRepositoryImpl(
                 if (bots.isNotEmpty()) {
                     attachMenuBots.value = bots
                     cacheProvider.setAttachBots(bots)
+                    rebuildTrackedIcons(bots)
                 }
             }
         }
@@ -81,6 +82,53 @@ class AttachMenuBotRepositoryImpl(
 
     override fun getAttachMenuBots(): Flow<List<AttachMenuBotModel>> {
         return attachMenuBots
+    }
+
+    private fun rebuildTrackedIcons(bots: List<AttachMenuBotModel>) {
+        sideMenuIconFileToBotId.clear()
+        bots.forEach { bot ->
+            bot.icon?.icon?.id?.takeIf { it != 0 }?.let { fileId ->
+                sideMenuIconFileToBotId[fileId] = bot.botUserId
+            }
+        }
+    }
+
+    private suspend fun applyBotIconPath(botId: Long, fileId: Int, path: String) {
+        val current = attachMenuBots.value
+        if (current.isEmpty()) return
+
+        var changed = false
+        val updated = current.map { bot ->
+            if (bot.botUserId != botId) return@map bot
+            val iconContainer = bot.icon ?: return@map bot
+            val iconModel = iconContainer.icon ?: return@map bot
+            if (iconModel.id != fileId) return@map bot
+            if (iconModel.local.path == path && iconModel.local.isDownloadingCompleted) return@map bot
+
+            changed = true
+            bot.copy(
+                icon = iconContainer.copy(
+                    icon = iconModel.copy(
+                        local = FileLocalModel(
+                            path = path,
+                            isDownloadingActive = false,
+                            canBeDownloaded = iconModel.local.canBeDownloaded,
+                            isDownloadingCompleted = true,
+                            canBeDeleted = iconModel.local.canBeDeleted,
+                            downloadOffset = iconModel.local.downloadOffset,
+                            downloadedPrefixSize = iconModel.local.downloadedPrefixSize,
+                            downloadedSize = iconModel.size
+                        )
+                    )
+                )
+            )
+        }
+
+        if (!changed) return
+
+        attachMenuBots.value = updated
+        cacheProvider.setAttachBots(updated)
+        saveAttachBotsToDb(updated)
     }
 
     private suspend fun saveAttachBotsToDb(bots: List<AttachMenuBotModel>) {

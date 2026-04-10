@@ -1,5 +1,6 @@
 package org.monogram.presentation.features.chats.currentChat.components.inputbar
 
+import android.content.ClipData
 import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.foundation.*
@@ -17,6 +18,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -25,6 +27,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -150,31 +153,33 @@ fun FullScreenEditorSheet(
 ) {
     if (!visible) return
     val context = LocalContext.current
+    val clipboardManager = LocalClipboard.current
+    val nativeClipboard = clipboardManager.nativeClipboard
 
     val focusRequester = remember { FocusRequester() }
-    var showEmojiPicker by remember { mutableStateOf(false) }
-    var showLinkDialog by remember { mutableStateOf(false) }
-    var linkValue by remember { mutableStateOf("https://") }
-    var showLanguageDialog by remember { mutableStateOf(false) }
-    var languageValue by remember { mutableStateOf("") }
-    var isPreviewMode by remember { mutableStateOf(false) }
-    var markdownMode by remember { mutableStateOf(false) }
-    var showFindReplace by remember { mutableStateOf(false) }
-    var findQuery by remember { mutableStateOf("") }
-    var replaceValue by remember { mutableStateOf("") }
-    var currentMatchIndex by remember { mutableIntStateOf(0) }
-    var showTemplatesSheet by remember { mutableStateOf(false) }
+    var showEmojiPicker by rememberSaveable { mutableStateOf(false) }
+    var showLinkDialog by rememberSaveable { mutableStateOf(false) }
+    var linkValue by rememberSaveable { mutableStateOf("https://") }
+    var showLanguageDialog by rememberSaveable { mutableStateOf(false) }
+    var languageValue by rememberSaveable { mutableStateOf("") }
+    var isPreviewMode by rememberSaveable { mutableStateOf(false) }
+    var markdownMode by rememberSaveable { mutableStateOf(false) }
+    var showFindReplace by rememberSaveable { mutableStateOf(false) }
+    var findQuery by rememberSaveable { mutableStateOf("") }
+    var replaceValue by rememberSaveable { mutableStateOf("") }
+    var currentMatchIndex by rememberSaveable { mutableIntStateOf(0) }
+    var showTemplatesSheet by rememberSaveable { mutableStateOf(false) }
     var showAutoSaved by remember { mutableStateOf(false) }
     var fontScale by remember { mutableFloatStateOf(1f) }
-    var showAiSheet by remember { mutableStateOf(false) }
-    var aiTranslateLanguage by remember { mutableStateOf("") }
-    var aiSelectedStyle by remember { mutableStateOf("") }
-    var aiAddEmojis by remember { mutableStateOf(false) }
-    var aiMode by remember { mutableStateOf(AiEditorMode.Stylize) }
-    var aiShowDiffMode by remember { mutableStateOf(true) }
+    var showAiSheet by rememberSaveable { mutableStateOf(false) }
+    var aiTranslateLanguage by rememberSaveable { mutableStateOf("") }
+    var aiSelectedStyle by rememberSaveable { mutableStateOf("") }
+    var aiAddEmojis by rememberSaveable { mutableStateOf(false) }
+    var aiMode by rememberSaveable { mutableStateOf(AiEditorMode.Stylize) }
+    var aiShowDiffMode by rememberSaveable { mutableStateOf(true) }
     var aiResultText by remember { mutableStateOf<AnnotatedString?>(null) }
     var aiResultTextValue by remember { mutableStateOf<TextFieldValue?>(null) }
-    var aiErrorMessage by remember { mutableStateOf<String?>(null) }
+    var aiErrorMessage by rememberSaveable { mutableStateOf<String?>(null) }
     var aiLoading by remember { mutableStateOf(false) }
 
     val snippetProvider: EditorSnippetProvider = koinInject()
@@ -315,6 +320,11 @@ fun FullScreenEditorSheet(
     }
     val richEntityCount = remember(entities) { entities.count { richEntityToAnnotation(it.type) != null } }
     val hasSelection = hasFormattableSelection(textValue)
+    val hasTextSelection = normalizedSelection(textValue.selection) != null
+    val canPasteFromClipboard = canWriteText &&
+            nativeClipboard.primaryClip?.let { clip ->
+                clip.itemCount > 0 && clip.getItemAt(0).coerceToText(context).isNotEmpty()
+            } == true
 
     fun showAiPreview(result: FormattedTextResult) {
         val mappedTextValue = buildTextFieldValueFromTextAndEntities(
@@ -558,6 +568,31 @@ fun FullScreenEditorSheet(
                 AnimatedVisibility(visible = !isPreviewMode) {
                     FullScreenEditorTools(
                         hasSelection = hasSelection,
+                        canCopy = hasTextSelection,
+                        canCut = canWriteText && hasTextSelection,
+                        canPaste = canPasteFromClipboard,
+                        onCopy = {
+                            selectedTextOrNull(textValue)?.let { selectedText ->
+                                nativeClipboard.setPrimaryClip(ClipData.newPlainText("", selectedText))
+                            }
+                        },
+                        onCut = {
+                            selectedTextOrNull(textValue)?.let { selectedText ->
+                                nativeClipboard.setPrimaryClip(ClipData.newPlainText("", selectedText))
+                                applyEditorChange(replaceSelection(textValue, ""))
+                            }
+                        },
+                        onPaste = {
+                            val clipboardText =
+                                nativeClipboard.primaryClip?.takeIf { it.itemCount > 0 }
+                                    ?.getItemAt(0)
+                                    ?.coerceToText(context)
+                                    ?.toString()
+                                    .orEmpty()
+                            if (clipboardText.isNotEmpty()) {
+                                applyEditorChange(replaceSelection(textValue, clipboardText))
+                            }
+                        },
                         onBold = { applyEditorChange(toggleRichEntity(textValue, MessageEntityType.Bold)) },
                         onItalic = { applyEditorChange(toggleRichEntity(textValue, MessageEntityType.Italic)) },
                         onUnderline = { applyEditorChange(toggleRichEntity(textValue, MessageEntityType.Underline)) },
@@ -1561,6 +1596,12 @@ private fun FullScreenEditorToolButton(icon: ImageVector, hint: String, enabled:
 @Composable
 private fun FullScreenEditorTools(
     hasSelection: Boolean,
+    canCopy: Boolean,
+    canCut: Boolean,
+    canPaste: Boolean,
+    onCopy: () -> Unit,
+    onCut: () -> Unit,
+    onPaste: () -> Unit,
     onBold: () -> Unit,
     onItalic: () -> Unit,
     onUnderline: () -> Unit,
@@ -1589,6 +1630,24 @@ private fun FullScreenEditorTools(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(2.dp)
             ) {
+                FullScreenEditorToolButton(
+                    Icons.Outlined.ContentCopy,
+                    stringResource(R.string.editor_action_copy),
+                    canCopy,
+                    onCopy
+                )
+                FullScreenEditorToolButton(
+                    Icons.Outlined.ContentCut,
+                    stringResource(R.string.editor_action_cut),
+                    canCut,
+                    onCut
+                )
+                FullScreenEditorToolButton(
+                    Icons.Outlined.ContentPaste,
+                    stringResource(R.string.editor_action_paste),
+                    canPaste,
+                    onPaste
+                )
                 FullScreenEditorToolButton(
                     Icons.Outlined.FormatBold,
                     stringResource(R.string.rich_text_bold),
@@ -1683,6 +1742,31 @@ private fun currentPreLanguage(value: TextFieldValue): String {
         ?.let { decodeRichEntity(it.item) as? MessageEntityType.Pre }
         ?.language
         .orEmpty()
+}
+
+private fun selectedTextOrNull(value: TextFieldValue): String? {
+    val selection = normalizedSelection(value.selection) ?: return null
+    return value.text.substring(selection.start, selection.end)
+}
+
+private fun replaceSelection(value: TextFieldValue, replacement: String): TextFieldValue {
+    val rawSelection = if (value.selection.start <= value.selection.end) {
+        value.selection
+    } else {
+        TextRange(value.selection.end, value.selection.start)
+    }
+    val maxLength = value.annotatedString.length
+    val selection = TextRange(
+        start = rawSelection.start.coerceIn(0, maxLength),
+        end = rawSelection.end.coerceIn(0, maxLength)
+    )
+    val newAnnotated = buildAnnotatedString {
+        append(value.annotatedString.subSequence(0, selection.start))
+        append(replacement)
+        append(value.annotatedString.subSequence(selection.end, value.annotatedString.length))
+    }
+    val cursor = selection.start + replacement.length
+    return value.copy(annotatedString = newAnnotated, selection = TextRange(cursor, cursor))
 }
 
 private fun insertSnippetAtSelection(value: TextFieldValue, snippet: String): TextFieldValue {

@@ -12,6 +12,9 @@
     <string name="current_device_section">Это устройство</string>
     <string name="login_requests_section">Запросы на вход</string>
     <string name="active_sessions_section">Активные сеансы</string>
+    <string name="sessions_login_attempt">Попытка входа</string>
+    <string name="sessions_unconfirmed">Не подтверждено</string>
+    <string name="sessions_terminate_action">Завершить сеанс</string>
 
     <string name="cd_navigate_back">Назад</string>
     <string name="cd_close_scanner">Закрыть сканер</string>
@@ -245,7 +248,12 @@
 
     <!-- Profile -->
     <string name="unknown_title">Неизвестно</string>
-    <string name="members_count_format">Участники: %1$d</string>
+    <plurals name="members_count_format">
+        <item quantity="one">%1$d участник</item>
+        <item quantity="few">%1$d участника</item>
+        <item quantity="many">%1$d участников</item>
+        <item quantity="other">%1$d участника</item>
+    </plurals>
     <string name="members_online_count_format">%1$s, %2$d в сети</string>
     <string name="not_implemented">Ещё не реализовано</string>
     <string name="search_not_implemented">Поиск пока не работает</string>
@@ -597,6 +605,8 @@
     <string name="show_link_previews_subtitle">Отображать превью для ссылок в сообщениях</string>
     <string name="drag_to_back_title">Свайп для возврата</string>
     <string name="drag_to_back_subtitle">Возврат назад свайпом от левого края</string>
+    <string name="tablet_interface_title">Планшетный интерфейс</string>
+    <string name="tablet_interface_subtitle">Использовать разделенный интерфейс на планшетах</string>
     <string name="two_line_label">Две строки</string>
     <string name="three_line_label">Три строки</string>
     <string name="show_photos_title">Показывать фотографии</string>
@@ -963,6 +973,7 @@
     <string name="action_cancel">Отмена</string>
     <string name="action_copy">Копировать</string>
     <string name="action_paste">Вставить</string>
+    <string name="action_paste_image">Вставить изображение</string>
     <string name="action_cut">Вырезать</string>
     <string name="action_select_all">Выделить все</string>
     <string name="action_apply">Применить</string>
@@ -1063,6 +1074,20 @@
     <string name="notification_service_stop">Остановить</string>
     <string name="notification_service_channel_name">Фоновая работа</string>
     <string name="notification_service_channel_description">Уведомление о работе приложения в фоне</string>
+    <string name="notification_new_message">Новое сообщение</string>
+    <string name="notification_person_me">Я</string>
+    <string name="notification_summary_title_format">%1$d сообщений из %2$d чатов</string>
+    <string name="notification_summary_text_format">%1$d чатов</string>
+    <string name="notification_group_chats">Чаты</string>
+    <string name="notification_group_other">Прочее</string>
+    <string name="notification_channel_private_name">Личные чаты</string>
+    <string name="notification_channel_private_description">Уведомления из личных переписок</string>
+    <string name="notification_channel_groups_name">Группы</string>
+    <string name="notification_channel_groups_description">Уведомления из групп</string>
+    <string name="notification_channel_channels_name">Каналы</string>
+    <string name="notification_channel_channels_description">Уведомления из каналов</string>
+    <string name="notification_channel_other_name">Другое</string>
+    <string name="notification_channel_other_description">Прочие уведомления</string>
 
     <!-- Chat Mapper / Media Types -->
     <string name="chat_mapper_photo">📷 Фото</string>
@@ -1324,6 +1349,10 @@
     <string name="statistics_vs_previous"> по сравнению с прошлым пер.</string>
     <string name="statistics_unknown_type">Неизвестный тип статистики</string>
     <string name="statistics_data_class_format">Класс данных: %1$s</string>
+    <string name="profile_statistics_preview_contact_format">Контакт: %1$s</string>
+    <string name="profile_statistics_preview_venue_format">Место: %1$s</string>
+    <string name="profile_statistics_preview_poll_format">Опрос: %1$s</string>
+    <string name="profile_statistics_preview_service_message">Служебное сообщение</string>
 
     <!-- Selection: Viewer Common -->
     <string name="viewer_back">Назад</string>
@@ -1569,7 +1598,6 @@
     <string name="logs_media_unsupported">Неподдерживаемое сообщение</string>
 
     <!-- Date and Formats -->
-    <string name="format_time">HH:mm</string>
     <string name="format_duration">%1$02d:%2$02d</string>
 
     <!-- Views Count -->
@@ -1684,6 +1712,17 @@
     <string name="mini_app_permission_request">Запрос разрешения</string>
     <string name="mini_app_allow">Разрешить</string>
     <string name="mini_app_deny">Отклонить</string>
+    <string name="mini_app_permission_biometry">Биометрия</string>
+    <string name="mini_app_share_contact_title">Поделиться контактом</string>
+    <string name="mini_app_share_contact_message">Разрешить %1$s доступ к Вашему номеру телефона?</string>
+    <string name="mini_app_allow_messages_title">Разрешить сообщения</string>
+    <string name="mini_app_allow_messages_message">Разрешить %1$s отправлять Вам сообщения?</string>
+    <string name="mini_app_download_file_title">Скачать файл</string>
+    <string name="mini_app_download_file_message_generic">Скачать этот файл?</string>
+    <string name="mini_app_download_file_message_named">Скачать %1$s?</string>
+    <string name="mini_app_biometric_auth_title">Биометрическая аутентификация</string>
+    <string name="mini_app_biometric_auth_subtitle">Подтвердите личность, чтобы продолжить</string>
+    <string name="mini_app_request_location_access_message">Разрешить этому боту доступ к Вашему местоположению?</string>
     <string name="mini_app_bot_permissions">Разрешения бота</string>
     <string name="mini_app_tos_title">Условия использования</string>
     <string name="mini_app_tos_text">Запуская это мини-приложение, Вы принимаете Условия использования и Политику конфиденциальности. Бот получит доступ к данным Вашего профиля.</string>
@@ -1899,6 +1938,9 @@
     <string name="editor_word_count">%1$d слов</string>
     <string name="editor_reading_time">≈%1$d мин чтения</string>
     <string name="editor_autosave_done">Черновик сохранён</string>
+    <string name="editor_action_copy">Копировать</string>
+    <string name="editor_action_cut">Вырезать</string>
+    <string name="editor_action_paste">Вставить</string>
     <string name="editor_ai">AI</string>
     <string name="editor_ai_title">ИИ-редактор</string>
     <string name="editor_ai_tab_translate">Перевод</string>

@@ -2,7 +2,6 @@ package org.monogram.presentation.features.chats.currentChat.components.chats
 
 import android.content.ClipData
 import android.os.Build
-import android.util.Log
 import android.widget.Toast
 import androidx.compose.animation.core.withInfiniteAnimationFrameMillis
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -33,6 +32,7 @@ import org.monogram.presentation.features.chats.currentChat.components.chats.mod
 @Composable
 fun MessageText(
     text: AnnotatedString,
+    rawText: String = text.text,
     inlineContent: Map<String, InlineTextContent>,
     style: TextStyle,
     modifier: Modifier = Modifier,
@@ -70,10 +70,14 @@ fun MessageText(
             )
         } else {
             var lastOffset = 0
+            val displayTextLength = text.length
 
             blockEntities.forEach { entity ->
-                if (entity.offset > lastOffset) {
-                    val subText = text.subSequence(lastOffset, entity.offset)
+                val safeLastOffset = lastOffset.coerceIn(0, displayTextLength)
+                val safeEntityStart = entity.offset.coerceIn(0, displayTextLength)
+
+                if (safeEntityStart > safeLastOffset) {
+                    val subText = text.subSequence(safeLastOffset, safeEntityStart)
                     if (subText.text.isNotBlank()) {
                         DefaultTextRender(
                             text = subText,
@@ -93,16 +97,21 @@ fun MessageText(
                 }
 
                 TextBlocks(
-                    text = text.text,
+                    text = rawText,
                     entity = entity,
                     isOutgoing = isOutgoing,
                 )
 
-                lastOffset = entity.offset + entity.length
+                val safeEntityEnd = (entity.offset.toLong() + entity.length.toLong())
+                    .coerceAtLeast(entity.offset.toLong())
+                    .coerceAtMost(Int.MAX_VALUE.toLong())
+                    .toInt()
+                lastOffset = maxOf(lastOffset, safeEntityEnd)
             }
 
-            if (lastOffset < text.length) {
-                val subText = text.subSequence(lastOffset, text.length)
+            val safeLastOffset = lastOffset.coerceIn(0, displayTextLength)
+            if (safeLastOffset < displayTextLength) {
+                val subText = text.subSequence(safeLastOffset, displayTextLength)
                 if (subText.text.isNotBlank()) {
                     DefaultTextRender(
                         text = subText,

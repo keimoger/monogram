@@ -12,8 +12,8 @@ import org.monogram.data.core.coRunCatching
 import org.monogram.data.datasource.cache.ChatLocalDataSource
 import org.monogram.data.datasource.remote.UserRemoteDataSource
 import org.monogram.data.gateway.TelegramGateway
-import org.monogram.data.gateway.UpdateDispatcher
 import org.monogram.data.infra.FileDownloadQueue
+import org.monogram.data.infra.FileObserverHub
 import org.monogram.data.mapper.isValidFilePath
 import org.monogram.data.mapper.toEntity
 import org.monogram.data.mapper.user.toTdApiChat
@@ -23,8 +23,8 @@ class ProfilePhotoRepositoryImpl(
     private val remote: UserRemoteDataSource,
     private val chatLocal: ChatLocalDataSource,
     private val gateway: TelegramGateway,
-    private val updates: UpdateDispatcher,
-    private val fileQueue: FileDownloadQueue
+    private val fileQueue: FileDownloadQueue,
+    private val fileObserverHub: FileObserverHub
 ) : ProfilePhotoRepository {
     private val avatarDownloadPriority = AVATAR_DOWNLOAD_PRIORITY
     private val avatarHdPrefetchPriority = AVATAR_HD_PREFETCH_PRIORITY
@@ -64,8 +64,22 @@ class ProfilePhotoRepositoryImpl(
             send(emptyList())
             return@channelFlow
         }
-        send(getUserProfilePhotos(userId))
-        updates.file.collectLatest { send(getUserProfilePhotos(userId)) }
+
+        var trackedFileIds = emptySet<Int>()
+
+        suspend fun reload() {
+            val loaded = getUserProfilePhotosWithTracking(userId)
+            trackedFileIds = loaded.second
+            send(loaded.first)
+        }
+
+        reload()
+
+        fileObserverHub.fileStates.collectLatest { state ->
+            if (state.fileId in trackedFileIds) {
+                reload()
+            }
+        }
     }
 
     override fun getChatProfilePhotosFlow(chatId: Long): Flow<List<String>> = channelFlow {
@@ -73,15 +87,72 @@ class ProfilePhotoRepositoryImpl(
             send(emptyList())
             return@channelFlow
         }
-        send(getChatProfilePhotos(chatId))
-        updates.file.collectLatest { send(getChatProfilePhotos(chatId)) }
+
+        var trackedFileIds = emptySet<Int>()
+
+        suspend fun reload() {
+            val loaded = getChatProfilePhotosWithTracking(chatId)
+            trackedFileIds = loaded.second
+            send(loaded.first)
+        }
+
+        reload()
+
+        fileObserverHub.fileStates.collectLatest { state ->
+            if (state.fileId in trackedFileIds) {
+                reload()
+            }
+        }
+    }
+
+    private suspend fun getUserProfilePhotosWithTracking(
+        userId: Long,
+        offset: Int = 0,
+        limit: Int = 10,
+        ensureFullRes: Boolean = false
+    ): Pair<List<String>, Set<Int>> {
+        if (userId <= 0) return emptyList<String>() to emptySet()
+        val trackedFileIds = linkedSetOf<Int>()
+        val result = remote.getUserProfilePhotos(userId, offset, limit)
+            ?: return emptyList<String>() to emptySet()
+        val paths = coroutineScope {
+            result.photos
+                .map { photo ->
+                    async {
+                        resolveUserProfilePhotoPath(
+                            photo,
+                            ensureFullRes,
+                            trackedFileIds
+                        )
+                    }
+                }
+                .awaitAll()
+                .filterNotNull()
+        }
+        return paths to trackedFileIds
+    }
+
+    private suspend fun getChatProfilePhotosWithTracking(
+        chatId: Long,
+        offset: Int = 0,
+        limit: Int = 10,
+        ensureFullRes: Boolean = false
+    ): Pair<List<String>, Set<Int>> {
+        if (chatId == 0L) return emptyList<String>() to emptySet()
+        val trackedFileIds = linkedSetOf<Int>()
+        val paths = loadChatPhotoHistoryPaths(chatId, offset, limit, ensureFullRes, trackedFileIds)
+        if (paths.isNotEmpty()) return paths to trackedFileIds
+
+        val currentPath = resolveCurrentChatPhotoPath(chatId, ensureFullRes, trackedFileIds)
+        return listOfNotNull(currentPath) to trackedFileIds
     }
 
     private suspend fun loadChatPhotoHistoryPaths(
         chatId: Long,
         offset: Int,
         limit: Int,
-        ensureFullRes: Boolean
+        ensureFullRes: Boolean,
+        trackedFileIds: MutableSet<Int>? = null
     ): List<String> {
         if (limit <= 0) return emptyList()
 
@@ -110,26 +181,41 @@ class ProfilePhotoRepositoryImpl(
 
         return coroutineScope {
             chatPhotos
-                .map { photo -> async { resolveUserProfilePhotoPath(photo, ensureFullRes) } }
+                .map { photo ->
+                    async {
+                        resolveUserProfilePhotoPath(
+                            photo,
+                            ensureFullRes,
+                            trackedFileIds
+                        )
+                    }
+                }
                 .awaitAll()
                 .filterNotNull()
                 .distinct()
         }
     }
 
-    private suspend fun resolveCurrentChatPhotoPath(chatId: Long, ensureFullRes: Boolean): String? {
+    private suspend fun resolveCurrentChatPhotoPath(
+        chatId: Long,
+        ensureFullRes: Boolean,
+        trackedFileIds: MutableSet<Int>? = null
+    ): String? {
         val chat = remote.getChat(chatId)?.also { chatLocal.insertChat(it.toEntity()) }
             ?: chatLocal.getChat(chatId)?.toTdApiChat()
             ?: return null
-        return resolveChatPhotoInfoPath(chat.photo, ensureFullRes)
+        return resolveChatPhotoInfoPath(chat.photo, ensureFullRes, trackedFileIds)
     }
 
     private suspend fun resolveChatPhotoInfoPath(
         photoInfo: TdApi.ChatPhotoInfo?,
-        ensureFullRes: Boolean
+        ensureFullRes: Boolean,
+        trackedFileIds: MutableSet<Int>? = null
     ): String? {
         val smallId = photoInfo?.small?.id?.takeIf { it != 0 }
         val bigId = photoInfo?.big?.id?.takeIf { it != 0 }
+        smallId?.let { trackedFileIds?.add(it) }
+        bigId?.let { trackedFileIds?.add(it) }
         val preferredFile = if (ensureFullRes) {
             photoInfo?.big ?: photoInfo?.small
         } else {
@@ -205,11 +291,17 @@ class ProfilePhotoRepositoryImpl(
 
     private suspend fun resolveUserProfilePhotoPath(
         photo: TdApi.ChatPhoto,
-        ensureFullRes: Boolean
+        ensureFullRes: Boolean,
+        trackedFileIds: MutableSet<Int>? = null
     ): String? {
         val animationFile = photo.animation?.file
+        animationFile?.id?.takeIf { it != 0 }?.let { trackedFileIds?.add(it) }
         val animationPath = animationFile?.local?.path?.takeIf { isValidFilePath(it) }
         if (animationPath != null) return animationPath
+
+        photo.sizes.forEach { size ->
+            size.photo.id.takeIf { it != 0 }?.let { trackedFileIds?.add(it) }
+        }
 
         val bestPhotoFile = photo.sizes
             .maxByOrNull { it.width.toLong() * it.height.toLong() }
@@ -253,7 +345,9 @@ class ProfilePhotoRepositoryImpl(
 
     private suspend fun resolveDownloadedFilePath(fileId: Int?): String? {
         if (fileId == null || fileId == 0) return null
-        val file = coRunCatching { gateway.execute(TdApi.GetFile(fileId)) }.getOrNull() ?: return null
+        val file = fileObserverHub.getCachedFile(fileId)
+            ?: coRunCatching { gateway.execute(TdApi.GetFile(fileId)) }.getOrNull()
+            ?: return null
         return if (file.local.isDownloadingCompleted) {
             file.local.path.takeIf { isValidFilePath(it) }
         } else {

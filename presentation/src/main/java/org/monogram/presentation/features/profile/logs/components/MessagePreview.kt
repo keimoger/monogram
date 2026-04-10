@@ -2,7 +2,13 @@ package org.monogram.presentation.features.profile.logs.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -69,7 +75,11 @@ fun MessagePreview(
                             .background(MaterialTheme.colorScheme.surfaceVariant)
                             .clickable {
                                 when (content) {
-                                    is MessageContent.Photo -> component.onPhotoClick(mediaPath, content.caption)
+                                    is MessageContent.Photo -> component.onPhotoClick(
+                                        mediaPath,
+                                        content.caption
+                                    )
+
                                     is MessageContent.Gif -> component.onVideoClick(
                                         mediaPath,
                                         content.caption,
@@ -115,6 +125,7 @@ fun MessagePreview(
                             )
                             MessageText(
                                 text = annotatedText,
+                                rawText = content.text,
                                 inlineContent = inlineContent,
                                 style = MaterialTheme.typography.bodyMedium,
                                 entities = content.entities
@@ -275,6 +286,7 @@ private fun MediaPreviewText(
 
     MessageText(
         text = annotatedText,
+        rawText = text,
         inlineContent = emptyMap(),
         style = MaterialTheme.typography.bodyMedium,
         entities = if (oldText != null && oldText != text) emptyList() else entities

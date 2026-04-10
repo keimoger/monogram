@@ -1,21 +1,46 @@
 package org.monogram.presentation.features.chats.currentChat.components.channels
 
-import androidx.compose.animation.*
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -32,15 +57,24 @@ import androidx.compose.ui.zIndex
 import coil3.compose.rememberAsyncImagePainter
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import org.koin.compose.koinInject
 import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.MessageModel
 import org.monogram.domain.models.MessageSendingState
+import org.monogram.presentation.core.util.DateFormatManager
 import org.monogram.presentation.core.util.IDownloadUtils
 import org.monogram.presentation.core.util.namespacedCacheKey
 import org.monogram.presentation.features.chats.currentChat.AutoDownloadSuppression
 import org.monogram.presentation.features.chats.currentChat.components.VideoStickerPlayer
 import org.monogram.presentation.features.chats.currentChat.components.VideoType
-import org.monogram.presentation.features.chats.currentChat.components.chats.*
+import org.monogram.presentation.features.chats.currentChat.components.chats.ForwardContent
+import org.monogram.presentation.features.chats.currentChat.components.chats.MediaLoadingAction
+import org.monogram.presentation.features.chats.currentChat.components.chats.MediaLoadingBackground
+import org.monogram.presentation.features.chats.currentChat.components.chats.MessageReactionsView
+import org.monogram.presentation.features.chats.currentChat.components.chats.MessageText
+import org.monogram.presentation.features.chats.currentChat.components.chats.ReplyContent
+import org.monogram.presentation.features.chats.currentChat.components.chats.buildAnnotatedMessageTextWithEmoji
+import org.monogram.presentation.features.chats.currentChat.components.chats.rememberMessageInlineContent
 
 @Composable
 fun ChannelGifMessageBubble(
@@ -83,6 +117,9 @@ fun ChannelGifMessageBubble(
 
     var gifPosition by remember { mutableStateOf(Offset.Zero) }
     val revealedSpoilers = remember { mutableStateListOf<Int>() }
+
+    val dateFormatManager: DateFormatManager = koinInject()
+    val timeFormat = dateFormatManager.getHourMinuteFormat()
 
     var stablePath by remember(msg.id) { mutableStateOf(content.path) }
     val hasPath = !stablePath.isNullOrBlank()
@@ -234,7 +271,10 @@ fun ChannelGifMessageBubble(
                                 modifier = Modifier
                                     .align(Alignment.TopStart)
                                     .padding(8.dp)
-                                    .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
+                                    .background(
+                                        Color.Black.copy(alpha = 0.45f),
+                                        RoundedCornerShape(6.dp)
+                                    )
                                     .padding(horizontal = 6.dp, vertical = 2.dp)
                             ) {
                                 Text(
@@ -277,7 +317,10 @@ fun ChannelGifMessageBubble(
                                 modifier = Modifier
                                     .align(Alignment.BottomEnd)
                                     .padding(6.dp)
-                                    .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
+                                    .background(
+                                        Color.Black.copy(alpha = 0.45f),
+                                        RoundedCornerShape(10.dp)
+                                    )
                                     .padding(horizontal = 6.dp, vertical = 2.dp)
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -299,7 +342,7 @@ fun ChannelGifMessageBubble(
                                         }
                                     }
                                     Text(
-                                        text = formatTime(context, msg.date),
+                                        text = formatTime(msg.date, timeFormat),
                                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                                         color = Color.White
                                     )
@@ -353,6 +396,7 @@ fun ChannelGifMessageBubble(
 
                         MessageText(
                             text = finalAnnotatedString,
+                            rawText = content.caption,
                             inlineContent = inlineContent,
                             style = MaterialTheme.typography.bodyLarge.copy(
                                 fontSize = fontSize.sp,
@@ -393,7 +437,7 @@ fun ChannelGifMessageBubble(
                                     }
                                 }
                                 Text(
-                                    text = formatTime(context, msg.date),
+                                    text = formatTime(msg.date, timeFormat),
                                     style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(0.6f)
                                 )

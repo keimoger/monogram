@@ -24,12 +24,17 @@ class FileUpdateHandler(
     private val _fileDownloadCompleted =
         MutableSharedFlow<Pair<Long, String>>(extraBufferCapacity = 64, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     private val _uploadProgress = MutableSharedFlow<Pair<Long, Float>>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    private val _fileUpdates = MutableSharedFlow<TdApi.File>(
+        extraBufferCapacity = 256,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
 
     val downloadProgress = _downloadProgress.asSharedFlow()
     val downloadCompleted = _downloadCompleted.asSharedFlow()
     val fileDownloadProgress = _fileDownloadProgress.asSharedFlow()
     val fileDownloadCompleted = _fileDownloadCompleted.asSharedFlow()
     val uploadProgress = _uploadProgress.asSharedFlow()
+    val fileUpdates = _fileUpdates.asSharedFlow()
 
     init {
         scope.launch {
@@ -39,6 +44,7 @@ class FileUpdateHandler(
 
     private fun handle(file: TdApi.File) {
         queue.updateFileCache(file)
+        _fileUpdates.tryEmit(file)
 
         val downloading = file.local?.isDownloadingActive == true
         val downloadDone = file.local?.isDownloadingCompleted == true

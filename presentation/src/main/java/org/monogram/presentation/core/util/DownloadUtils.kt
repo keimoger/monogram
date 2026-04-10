@@ -1,7 +1,11 @@
 package org.monogram.presentation.core.util
 
 import android.app.Activity
-import android.content.*
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.ContentValues
+import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
 import android.media.MediaScannerConnection
 import android.net.ConnectivityManager
@@ -22,61 +26,60 @@ class DownloadUtils(
 ) : IDownloadUtils {
 
     override fun saveFileToDownloads(filePath: String) {
-        try {
-            val file = File(filePath)
-            if (!file.exists()) {
-                messageDisplayer.show("File not found")
-                return
+        when (saveFileToDownloadsInternal(filePath)) {
+            SaveResult.SUCCESS -> messageDisplayer.show("Saved to Downloads/MonoGram")
+            SaveResult.NOT_FOUND -> messageDisplayer.show("File not found")
+            SaveResult.FAILED -> messageDisplayer.show("Failed to save file")
+        }
+    }
+
+    override fun saveFilesToDownloads(filePaths: List<String>) {
+        val paths = filePaths
+            .asSequence()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+            .toList()
+
+        if (paths.isEmpty()) {
+            messageDisplayer.show("No files to save")
+            return
+        }
+
+        var savedCount = 0
+        var notFoundCount = 0
+        var failedCount = 0
+
+        paths.forEach { path ->
+            when (saveFileToDownloadsInternal(path)) {
+                SaveResult.SUCCESS -> savedCount++
+                SaveResult.NOT_FOUND -> notFoundCount++
+                SaveResult.FAILED -> failedCount++
+            }
+        }
+
+        when {
+            savedCount == 0 && notFoundCount > 0 && failedCount == 0 -> {
+                messageDisplayer.show("Files not found")
             }
 
-            val fileName = file.name
-            val mimeType = getMimeType(filePath)
-            val relativePath = "${Environment.DIRECTORY_DOWNLOADS}/MonoGram"
+            savedCount == 0 -> {
+                messageDisplayer.show("Failed to save files")
+            }
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val contentValues = ContentValues().apply {
-                    put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-                    put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
-                    put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
-                }
-
-                val resolver = context.contentResolver
-                val uri = resolver.insert(
-                    MediaStore.Downloads.EXTERNAL_CONTENT_URI,
-                    contentValues
-                )
-
-                if (uri != null) {
-                    resolver.openOutputStream(uri)?.use { outputStream ->
-                        FileInputStream(file).use { inputStream ->
-                            inputStream.copyTo(outputStream)
-                        }
-                    }
+            notFoundCount == 0 && failedCount == 0 -> {
+                if (savedCount == 1) {
                     messageDisplayer.show("Saved to Downloads/MonoGram")
                 } else {
-                    messageDisplayer.show("Failed to create file in Downloads")
+                    messageDisplayer.show("Saved $savedCount files to Downloads/MonoGram")
                 }
-            } else {
-                val downloadsDir = Environment.getExternalStoragePublicDirectory(
-                    Environment.DIRECTORY_DOWNLOADS
-                )
-                val monoGramDir = File(downloadsDir, "MonoGram")
-                if (!monoGramDir.exists()) {
-                    monoGramDir.mkdirs()
-                }
-
-                val destinationFile = File(monoGramDir, fileName)
-
-                FileInputStream(file).use { inputStream ->
-                    destinationFile.outputStream().use { outputStream ->
-                        inputStream.copyTo(outputStream)
-                    }
-                }
-
-                messageDisplayer.show("Saved to Downloads/MonoGram")
             }
-        } catch (e: Exception) {
-            messageDisplayer.show("Failed to save: ${e.message}")
+
+            else -> {
+                messageDisplayer.show(
+                    "Saved $savedCount files to Downloads/MonoGram ($notFoundCount not found, $failedCount failed)"
+                )
+            }
         }
     }
 
@@ -256,6 +259,86 @@ class DownloadUtils(
         } catch (e: Exception) {
             messageDisplayer.show("Failed to copy: ${e.message}")
         }
+    }
+
+    private fun saveFileToDownloadsInternal(filePath: String): SaveResult {
+        return try {
+            val file = File(filePath)
+            if (!file.exists()) return SaveResult.NOT_FOUND
+
+            val fileName = file.name
+            val mimeType = getMimeType(filePath)
+            val relativePath = "${Environment.DIRECTORY_DOWNLOADS}/MonoGram"
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val contentValues = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                    put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
+                    put(MediaStore.MediaColumns.IS_PENDING, 1)
+                }
+
+                val resolver = context.contentResolver
+                val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+                    ?: return SaveResult.FAILED
+
+                val isWritten = resolver.openOutputStream(uri)?.use { outputStream ->
+                    FileInputStream(file).use { inputStream ->
+                        inputStream.copyTo(outputStream)
+                    }
+                    true
+                } ?: false
+
+                if (!isWritten) {
+                    resolver.delete(uri, null, null)
+                    return SaveResult.FAILED
+                }
+
+                contentValues.clear()
+                contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                resolver.update(uri, contentValues, null, null)
+
+                SaveResult.SUCCESS
+            } else {
+                val downloadsDir =
+                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                val monoGramDir = File(downloadsDir, "MonoGram")
+                if (!monoGramDir.exists() && !monoGramDir.mkdirs()) {
+                    return SaveResult.FAILED
+                }
+
+                val destinationFile = resolveUniqueDestinationFile(monoGramDir, fileName)
+                FileInputStream(file).use { inputStream ->
+                    destinationFile.outputStream().use { outputStream ->
+                        inputStream.copyTo(outputStream)
+                    }
+                }
+
+                SaveResult.SUCCESS
+            }
+        } catch (_: Exception) {
+            SaveResult.FAILED
+        }
+    }
+
+    private fun resolveUniqueDestinationFile(directory: File, fileName: String): File {
+        val dotIndex = fileName.lastIndexOf('.')
+        val baseName = if (dotIndex > 0) fileName.substring(0, dotIndex) else fileName
+        val extension = if (dotIndex > 0) fileName.substring(dotIndex) else ""
+
+        var candidate = File(directory, fileName)
+        var index = 1
+        while (candidate.exists()) {
+            candidate = File(directory, "$baseName ($index)$extension")
+            index++
+        }
+        return candidate
+    }
+
+    private enum class SaveResult {
+        SUCCESS,
+        NOT_FOUND,
+        FAILED
     }
 
     override fun isWifiConnected(): Boolean {

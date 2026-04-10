@@ -63,6 +63,8 @@ fun ProfileTopBar(
     var showMenu by remember { mutableStateOf(false) }
     val hasMenuActions = canShare || canEdit || canEditContact || canReport || canBlock || canDelete
     val iconButtonShapes = ExpressiveDefaults.iconButtonShapes()
+    val hasTextStatusBadges = isBot || isScam || isFake
+    val shouldCompactTopBar = hasTextStatusBadges && (title.length >= 18 || canSearch || hasMenuActions)
 
     val iconTint = lerp(
         start = MaterialTheme.colorScheme.onSurface,
@@ -89,7 +91,8 @@ fun ProfileTopBar(
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f, fill = false)
                     )
 
                     if (isVerified) {
@@ -111,7 +114,7 @@ fun ProfileTopBar(
                         )
                     }
 
-                    if (isBot) {
+                    if (isBot && !shouldCompactTopBar) {
                         Spacer(modifier = Modifier.width(4.dp))
                         TopBarStatusBadge(
                             text = stringResource(R.string.label_bot_badge),
@@ -120,7 +123,7 @@ fun ProfileTopBar(
                         )
                     }
 
-                    if (isScam) {
+                    if (isScam && !shouldCompactTopBar) {
                         Spacer(modifier = Modifier.width(4.dp))
                         TopBarStatusBadge(
                             text = stringResource(R.string.label_scam_badge),
@@ -129,7 +132,7 @@ fun ProfileTopBar(
                         )
                     }
 
-                    if (isFake) {
+                    if (isFake && !shouldCompactTopBar) {
                         Spacer(modifier = Modifier.width(4.dp))
                         TopBarStatusBadge(
                             text = stringResource(R.string.label_fake_badge),

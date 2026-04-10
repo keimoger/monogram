@@ -1,8 +1,19 @@
 package org.monogram.presentation.features.chats.currentChat.components.channels
 
-import androidx.compose.animation.*
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.layout.*
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -23,10 +34,19 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import org.koin.compose.koinInject
 import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.MessageModel
 import org.monogram.domain.models.MessageSendingState
-import org.monogram.presentation.features.chats.currentChat.components.chats.*
+import org.monogram.presentation.core.util.DateFormatManager
+import org.monogram.presentation.features.chats.currentChat.components.chats.ForwardContent
+import org.monogram.presentation.features.chats.currentChat.components.chats.LinkPreview
+import org.monogram.presentation.features.chats.currentChat.components.chats.MessageReactionsView
+import org.monogram.presentation.features.chats.currentChat.components.chats.MessageText
+import org.monogram.presentation.features.chats.currentChat.components.chats.ReplyContent
+import org.monogram.presentation.features.chats.currentChat.components.chats.buildAnnotatedMessageTextWithEmoji
+import org.monogram.presentation.features.chats.currentChat.components.chats.isBigEmoji
+import org.monogram.presentation.features.chats.currentChat.components.chats.rememberMessageInlineContent
 
 @Composable
 fun ChannelTextMessageBubble(
@@ -62,6 +82,9 @@ fun ChannelTextMessageBubble(
             if (isSameSenderBelow) smallCorner else tailCorner,
         bottomEnd = if (showComments && msg.canGetMessageThread) 4.dp else cornerRadius
     )
+
+    val dateFormatManager: DateFormatManager = koinInject()
+    val timeFormat = dateFormatManager.getHourMinuteFormat()
 
     val revealedSpoilers = remember { mutableStateListOf<Int>() }
 
@@ -106,6 +129,7 @@ fun ChannelTextMessageBubble(
 
                 MessageText(
                     text = finalAnnotatedString,
+                    rawText = content.text,
                     inlineContent = inlineContent,
                     style = MaterialTheme.typography.bodyLarge.copy(
                         fontSize = finalFontSize.sp,
@@ -158,9 +182,8 @@ fun ChannelTextMessageBubble(
                             Spacer(modifier = Modifier.width(8.dp))
                         }
                     }
-
                     Text(
-                        text = formatTime(context, msg.date),
+                        text = formatTime(msg.date, timeFormat),
                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(0.6f)
                     )
