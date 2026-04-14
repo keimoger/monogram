@@ -1,6 +1,10 @@
 package org.monogram.presentation.features.viewers.components
 
-import androidx.compose.animation.core.*
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
@@ -150,6 +154,8 @@ suspend fun PointerInputScope.detectZoomAndDismissGestures(
     screenHeightPx: Float,
     dismissThreshold: Float,
     dismissVelocityThreshold: Float,
+    allowZoom: Boolean = true,
+    allowDismiss: Boolean = true,
     onDismiss: () -> Unit,
     scope: CoroutineScope
 ) {
@@ -173,9 +179,9 @@ suspend fun PointerInputScope.detectZoomAndDismissGestures(
             val zoomChange = event.calculateZoom()
             val panChange = event.calculatePan()
 
-            if (pointerCount > 1) isZooming = true
+            if (allowZoom && pointerCount > 1) isZooming = true
 
-            if (!isZooming && !isVerticalDrag && zoomState.scale.value == 1f && pointerCount == 1) {
+            if (allowDismiss && !isZooming && !isVerticalDrag && zoomState.scale.value == 1f && pointerCount == 1) {
                 pan += panChange
                 val totalPan = pan.getDistance()
                 if (totalPan > touchSlop) {
@@ -187,10 +193,10 @@ suspend fun PointerInputScope.detectZoomAndDismissGestures(
                 }
             }
 
-            if (isZooming || zoomState.scale.value > 1f) {
+            if (allowZoom && (isZooming || zoomState.scale.value > 1f)) {
                 zoomState.onTransform(scope, panChange, zoomChange, IntSize(size.width, size.height), 3f)
                 event.changes.forEach { if (it.positionChanged()) it.consume() }
-            } else if (isVerticalDrag) {
+            } else if (allowDismiss && isVerticalDrag) {
                 scope.launch { rootState.drag(panChange.y) }
                 event.changes.forEach { if (it.positionChanged()) it.consume() }
             }
@@ -199,9 +205,9 @@ suspend fun PointerInputScope.detectZoomAndDismissGestures(
         }
 
         val velocity = tracker.calculateVelocity()
-        if (zoomState.scale.value > 1f) {
+        if (allowZoom && zoomState.scale.value > 1f) {
             zoomState.ensureBounds(size.width.toFloat(), size.height.toFloat(), scope)
-        } else if (isVerticalDrag) {
+        } else if (allowDismiss && isVerticalDrag) {
             val offsetY = rootState.offsetY.value
             val shouldDismiss = abs(offsetY) > dismissThreshold || abs(velocity.y) > dismissVelocityThreshold
             if (shouldDismiss) {

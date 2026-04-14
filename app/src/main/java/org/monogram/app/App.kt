@@ -20,7 +20,6 @@ import org.monogram.presentation.di.AppContainer
 import org.monogram.presentation.di.KoinAppContainer
 import java.io.PrintWriter
 import java.io.StringWriter
-import kotlin.jvm.java
 import kotlin.system.exitProcess
 
 class App : Application(), SingletonImageLoader.Factory {
@@ -84,12 +83,29 @@ class App : Application(), SingletonImageLoader.Factory {
 
     private fun checkPushAvailability() {
         val distrManager = get<DistrManager>()
-        val isGmsAvailable = distrManager.isGmsAvailable()
-        val isFcmAvailable = distrManager.isFcmAvailable()
-
         val prefs = get<AppPreferencesProvider>()
-        if (!(isGmsAvailable && isFcmAvailable) && prefs.pushProvider.value == PushProvider.FCM) {
-            prefs.setPushProvider(PushProvider.GMS_LESS)
+        val currentProvider = prefs.pushProvider.value
+        val bestAvailable = resolveBestAvailablePushProvider(distrManager)
+
+        val shouldFallback = when (currentProvider) {
+            PushProvider.FCM -> bestAvailable != PushProvider.FCM
+            PushProvider.UNIFIED_PUSH -> !distrManager.isUnifiedPushDistributorAvailable()
+            PushProvider.GMS_LESS -> false
+        }
+
+        if (shouldFallback && currentProvider != bestAvailable) {
+            prefs.setPushProvider(bestAvailable)
+        }
+    }
+
+    private fun resolveBestAvailablePushProvider(distrManager: DistrManager): PushProvider {
+        val fcmAvailable = distrManager.isGmsAvailable() && distrManager.isFcmAvailable()
+        val unifiedPushAvailable = distrManager.isUnifiedPushDistributorAvailable()
+
+        return when {
+            fcmAvailable -> PushProvider.FCM
+            unifiedPushAvailable -> PushProvider.UNIFIED_PUSH
+            else -> PushProvider.GMS_LESS
         }
     }
 

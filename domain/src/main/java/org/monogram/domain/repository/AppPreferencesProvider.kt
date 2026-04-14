@@ -3,8 +3,59 @@ package org.monogram.domain.repository
 import kotlinx.coroutines.flow.StateFlow
 
 enum class PushProvider {
-    FCM, GMS_LESS
+    FCM, UNIFIED_PUSH, GMS_LESS
 }
+
+enum class ProxyNetworkType {
+    WIFI,
+    MOBILE,
+    VPN,
+    OTHER
+}
+
+enum class ProxyNetworkMode {
+    DIRECT,
+    BEST_PROXY,
+    LAST_USED,
+    SPECIFIC_PROXY
+}
+
+enum class ProxySortMode {
+    ACTIVE_FIRST,
+    LOWEST_PING,
+    SERVER_NAME,
+    PROXY_TYPE,
+    STATUS
+}
+
+enum class ProxyUnavailableFallback {
+    BEST_PROXY,
+    DIRECT,
+    KEEP_CURRENT
+}
+
+enum class ProxySmartSwitchMode {
+    BEST_PING,
+    RANDOM_AVAILABLE
+}
+
+data class ProxyNetworkRule(
+    val mode: ProxyNetworkMode,
+    val specificProxyId: Int? = null,
+    val lastUsedProxyId: Int? = null
+)
+
+fun defaultProxyNetworkMode(networkType: ProxyNetworkType): ProxyNetworkMode {
+    return if (networkType == ProxyNetworkType.VPN) {
+        ProxyNetworkMode.DIRECT
+    } else {
+        ProxyNetworkMode.BEST_PROXY
+    }
+}
+
+const val DEFAULT_SMART_SWITCH_CHECK_INTERVAL_MINUTES = 5
+const val MIN_SMART_SWITCH_CHECK_INTERVAL_MINUTES = 1
+const val MAX_SMART_SWITCH_CHECK_INTERVAL_MINUTES = 60
 
 interface AppPreferencesProvider {
     val autoDownloadMobile: StateFlow<Boolean>
@@ -42,9 +93,14 @@ interface AppPreferencesProvider {
 
     val enabledProxyId: StateFlow<Int?>
     val isAutoBestProxyEnabled: StateFlow<Boolean>
-    val isTelegaProxyEnabled: StateFlow<Boolean>
-    val telegaProxyUrls: StateFlow<Set<String>>
+    val proxySmartSwitchMode: StateFlow<ProxySmartSwitchMode>
+    val proxyAutoCheckIntervalMinutes: StateFlow<Int>
     val preferIpv6: StateFlow<Boolean>
+    val proxySortMode: StateFlow<ProxySortMode>
+    val proxyUnavailableFallback: StateFlow<ProxyUnavailableFallback>
+    val hideOfflineProxies: StateFlow<Boolean>
+    val favoriteProxyId: StateFlow<Int?>
+    val proxyNetworkRules: StateFlow<Map<ProxyNetworkType, ProxyNetworkRule>>
     val userProxyBackups: StateFlow<Set<String>>
 
     val isBiometricEnabled: StateFlow<Boolean>
@@ -88,9 +144,16 @@ interface AppPreferencesProvider {
 
     fun setEnabledProxyId(proxyId: Int?)
     fun setAutoBestProxyEnabled(enabled: Boolean)
-    fun setTelegaProxyEnabled(enabled: Boolean)
-    fun setTelegaProxyUrls(urls: Set<String>)
+    fun setProxySmartSwitchMode(mode: ProxySmartSwitchMode)
+    fun setProxyAutoCheckIntervalMinutes(minutes: Int)
     fun setPreferIpv6(enabled: Boolean)
+    fun setProxySortMode(mode: ProxySortMode)
+    fun setProxyUnavailableFallback(fallback: ProxyUnavailableFallback)
+    fun setHideOfflineProxies(enabled: Boolean)
+    fun setFavoriteProxyId(proxyId: Int?)
+    fun setProxyNetworkMode(networkType: ProxyNetworkType, mode: ProxyNetworkMode)
+    fun setSpecificProxyIdForNetwork(networkType: ProxyNetworkType, proxyId: Int?)
+    fun setLastUsedProxyIdForNetwork(networkType: ProxyNetworkType, proxyId: Int?)
     fun setUserProxyBackups(backups: Set<String>)
 
     fun setBiometricEnabled(enabled: Boolean)

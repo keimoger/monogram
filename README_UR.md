@@ -22,7 +22,7 @@
   </a>
 </h1>
 
-**اسے دوسری زبانوں میں پڑھیں:** [English](README.md), [Русский](README_RU.md)، [한국어](README_KOR.md),
+**اسے دوسری زبانوں میں پڑھیں:** [English](README.md), [Русский](README_RU.md)، [Türkçe](README_TR.md), [한국어](README_KOR.md),
 [Español](README_ES.md)
 
 ---

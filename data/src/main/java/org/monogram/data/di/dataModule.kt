@@ -28,9 +28,7 @@ import org.monogram.data.datasource.remote.AuthRemoteDataSource
 import org.monogram.data.datasource.remote.ChatRemoteSource
 import org.monogram.data.datasource.remote.ChatsRemoteDataSource
 import org.monogram.data.datasource.remote.EmojiRemoteSource
-import org.monogram.data.datasource.remote.ExternalProxyDataSource
 import org.monogram.data.datasource.remote.GifRemoteSource
-import org.monogram.data.datasource.remote.HttpExternalProxyDataSource
 import org.monogram.data.datasource.remote.LinkRemoteDataSource
 import org.monogram.data.datasource.remote.MessageFileApi
 import org.monogram.data.datasource.remote.MessageFileCoordinator
@@ -83,6 +81,9 @@ import org.monogram.data.mapper.WebPageMapper
 import org.monogram.data.mapper.message.MessageContentMapper
 import org.monogram.data.mapper.message.MessagePersistenceMapper
 import org.monogram.data.mapper.message.MessageSenderResolver
+import org.monogram.data.notifications.NotificationMuteResolver
+import org.monogram.data.push.PushSyncTrigger
+import org.monogram.data.push.UnifiedPushManager
 import org.monogram.data.repository.AttachMenuBotRepositoryImpl
 import org.monogram.data.repository.AuthRepositoryImpl
 import org.monogram.data.repository.BotRepositoryImpl
@@ -90,7 +91,6 @@ import org.monogram.data.repository.ChatInfoRepositoryImpl
 import org.monogram.data.repository.ChatStatisticsRepositoryImpl
 import org.monogram.data.repository.ChatsListRepositoryImpl
 import org.monogram.data.repository.EmojiRepositoryImpl
-import org.monogram.data.repository.ExternalProxyRepositoryImpl
 import org.monogram.data.repository.GifRepositoryImpl
 import org.monogram.data.repository.LinkHandlerRepositoryImpl
 import org.monogram.data.repository.LinkParser
@@ -102,6 +102,9 @@ import org.monogram.data.repository.PollRepositoryImpl
 import org.monogram.data.repository.PremiumRepositoryImpl
 import org.monogram.data.repository.PrivacyRepositoryImpl
 import org.monogram.data.repository.ProfilePhotoRepositoryImpl
+import org.monogram.data.repository.ProxyDiagnosticsRepositoryImpl
+import org.monogram.data.repository.ProxyRepositoryImpl
+import org.monogram.data.repository.PushDebugRepositoryImpl
 import org.monogram.data.repository.SessionRepositoryImpl
 import org.monogram.data.repository.SponsorRepositoryImpl
 import org.monogram.data.repository.StickerRepositoryImpl
@@ -125,7 +128,6 @@ import org.monogram.domain.repository.ChatSearchRepository
 import org.monogram.domain.repository.ChatSettingsRepository
 import org.monogram.domain.repository.ChatStatisticsRepository
 import org.monogram.domain.repository.EmojiRepository
-import org.monogram.domain.repository.ExternalProxyRepository
 import org.monogram.domain.repository.FileRepository
 import org.monogram.domain.repository.ForumTopicsRepository
 import org.monogram.domain.repository.GifRepository
@@ -142,6 +144,9 @@ import org.monogram.domain.repository.PollRepository
 import org.monogram.domain.repository.PremiumRepository
 import org.monogram.domain.repository.PrivacyRepository
 import org.monogram.domain.repository.ProfilePhotoRepository
+import org.monogram.domain.repository.ProxyDiagnosticsRepository
+import org.monogram.domain.repository.ProxyRepository
+import org.monogram.domain.repository.PushDebugRepository
 import org.monogram.domain.repository.SessionRepository
 import org.monogram.domain.repository.SponsorRepository
 import org.monogram.domain.repository.StickerRepository
@@ -161,7 +166,7 @@ val dataModule = module {
 
     single<DispatcherProvider> { DefaultDispatcherProvider() }
     single<StringProvider> { AndroidStringProvider(androidContext()) }
-    single { TdLibParametersProvider(androidContext()) }
+    single(createdAtStart = true) { TdLibParametersProvider(androidContext()) }
     single(createdAtStart = true) {
         OfflineWarmup(
             scope = get(),
@@ -487,6 +492,10 @@ val dataModule = module {
         )
     }
 
+    single { PushSyncTrigger(connectionManager = get(), gateway = get()) }
+    single { UnifiedPushManager(androidContext()) }
+    single { NotificationMuteResolver() }
+
     single {
         ChatsListRepositoryImpl(
             remoteDataSource = get(),
@@ -768,18 +777,16 @@ val dataModule = module {
         )
     }
 
-    factory<ExternalProxyDataSource> {
-        HttpExternalProxyDataSource(
-            dispatchers = get()
+    single<ProxyRepository> {
+        ProxyRepositoryImpl(
+            remote = get(),
+            appPreferences = get()
         )
     }
 
-    single<ExternalProxyRepository> {
-        ExternalProxyRepositoryImpl(
-            remote = get(),
-            externalSource = get(),
-            dispatchers = get(),
-            appPreferences = get()
+    single<ProxyDiagnosticsRepository> {
+        ProxyDiagnosticsRepositoryImpl(
+            remote = get()
         )
     }
 
@@ -806,5 +813,27 @@ val dataModule = module {
         )
     }
 
-    single(createdAtStart = true) { TdNotificationManager(androidContext(), get(), get(), get(), get(), get(), get()) }
+    single<PushDebugRepository> {
+        PushDebugRepositoryImpl(
+            context = androidContext(),
+            appPreferences = get(),
+            unifiedPushManager = get(),
+            pushSyncTrigger = get(),
+            scope = get()
+        )
+    }
+
+    single(createdAtStart = true) {
+        TdNotificationManager(
+            androidContext(),
+            get(),
+            get(),
+            get(),
+            get(),
+            get(),
+            get(),
+            get(),
+            get()
+        )
+    }
 }

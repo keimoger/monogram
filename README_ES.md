@@ -23,7 +23,7 @@
 </h1>
 
 **Si deseas leer este documento en otro lenguaje:** [Русский](README_RU.md),
-[한국어](README_KOR.md), [اُردو](README_UR.md), [English](README.md)
+[Türkçe](README_TR.md), [한국어](README_KOR.md), [اُردو](README_UR.md), [English](README.md)
 
 ---
 

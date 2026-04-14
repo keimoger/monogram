@@ -139,7 +139,7 @@
     <string name="mini_app_default_name">Mini App</string>
 
     <!-- Account Menu -->
-    <string name="app_name_dev">MonoGram Dev</string>
+    <string name="app_name_dev">MonoGram Alpha</string>
     <string name="action_add_account">Añadir Cuenta</string>
     <string name="add_account_subtitle">Inicia sesión en otra cuenta</string>
     <string name="menu_my_profile">Mi Perfil</string>
@@ -155,7 +155,7 @@
     <string name="menu_help_feedback">Ayuda y Comentarios</string>
     <string name="menu_help_feedback_subtitle">Preguntas frecuentes y soporte</string>
     <string name="privacy_policy">Política de Privacidad</string>
-    <string name="app_version_footer_format">MonoGram Dev para Android v%1$s</string>
+    <string name="app_version_footer_format">MonoGram Alpha para Android v%1$s</string>
     <string name="unknown_user">Usuario Desconocido</string>
     <string name="no_info">Sin información</string>
     <string name="cd_show_accounts">Mostrar cuentas</string>
@@ -232,6 +232,7 @@
     <string name="menu_pin">Fijar</string>
     <string name="menu_unpin">Desfijar</string>
     <string name="menu_forward">Reenviar</string>
+    <string name="menu_repeat">+1</string>
     <string name="menu_select">Seleccionar</string>
     <string name="menu_more">Más</string>
     <string name="menu_delete">Eliminar</string>
@@ -476,20 +477,73 @@
     <!-- Proxy Settings -->
     <string name="proxy_settings_header">Configuración de Proxy</string>
     <string name="refresh_pings_cd">Actualizar Pings</string>
-    <string name="add_proxy_button">Añadir Proxy</string>
+    <string name="add_proxy_button">Añadir</string>
     <string name="connection_section_header">Conexión</string>
     <string name="smart_switching_title">Cambio Inteligente</string>
-    <string name="smart_switching_subtitle">Usar automáticamente el proxy más rápido</string>
+    <string name="smart_switching_subtitle">Cambiar automáticamente entre proxys disponibles</string>
+    <string name="smart_switch_mode_title">Modo de cambio inteligente</string>
+    <string name="smart_switch_mode_subtitle">Cómo el cambio inteligente elige los proxies disponibles</string>
+    <string name="smart_switch_mode_best_ping">Menor ping</string>
+    <string name="smart_switch_mode_random_available">Aleatorio disponible</string>
+    <string name="smart_switch_check_interval_title">Intervalo de comprobación automática</string>
+    <string name="smart_switch_check_interval_subtitle">Con qué frecuencia el cambio inteligente comprueba la disponibilidad de proxies</string>
+    <string name="smart_switch_check_interval_format">%1$d min</string>
     <string name="prefer_ipv6_title">Preferir IPv6</string>
     <string name="prefer_ipv6_subtitle">Usar IPv6 cuando esté disponible</string>
     <string name="disable_proxy_title">Deshabilitar Proxy</string>
     <string name="connected_directly_subtitle">Conectado directamente</string>
     <string name="switch_to_direct_subtitle">Cambiar a conexión directa</string>
-    <string name="telega_proxy_header">Telega Proxy</string>
-    <string name="telega_proxy_subtitle">Se ha acusado a Telega Proxy de interceptar tráfico. MTProto protege los datos de los mensajes de la intercepción, pero usa este proxy bajo tu propio riesgo. Más info: t.me/te[...]
-    </string>
-    <string name="enable_telega_proxy_title">Habilitar Telega Proxy</string>
-    <string name="enable_telega_proxy_subtitle">Auto-obtener y cambiar al mejor</string>
+    <string name="proxy_network_rules_header">Reglas de red</string>
+    <string name="proxy_network_rules_subtitle">Elige cómo funciona el proxy para cada tipo de red</string>
+    <string name="proxy_network_wifi">Wi-Fi</string>
+    <string name="proxy_network_mobile">Datos móviles</string>
+    <string name="proxy_network_vpn">VPN</string>
+    <string name="proxy_network_other">Otras redes</string>
+    <string name="proxy_network_mode_direct">Directo</string>
+    <string name="proxy_network_mode_best">Mejor proxy</string>
+    <string name="proxy_network_mode_last_used">Último usado</string>
+    <string name="proxy_network_mode_specific">Proxy específico</string>
+    <string name="proxy_network_mode_direct_subtitle">Conectar siempre de forma directa en esta red</string>
+    <string name="proxy_network_mode_best_subtitle">Elegir el proxy disponible más rápido en esta red</string>
+    <string name="proxy_network_mode_last_used_subtitle">Reutilizar el último proxy usado en esta red</string>
+    <string name="proxy_network_mode_specific_subtitle">Usar siempre un proxy elegido en esta red</string>
+    <string name="proxy_specific_target_format">Específico: %1$s:%2$d</string>
+    <string name="proxy_list_behavior_header">Comportamiento de la lista</string>
+    <string name="proxy_sort_mode_title">Ordenar proxys</string>
+    <string name="proxy_sort_mode_subtitle">Elige cómo se ordena la lista de proxys</string>
+    <string name="proxy_sort_mode_active_first">Activo primero</string>
+    <string name="proxy_sort_mode_lowest_ping">Menor latencia</string>
+    <string name="proxy_sort_mode_server_name">Nombre del servidor</string>
+    <string name="proxy_sort_mode_proxy_type">Tipo de proxy</string>
+    <string name="proxy_sort_mode_status">Estado</string>
+    <string name="proxy_unavailable_fallback_title">Si el proxy seleccionado no está disponible</string>
+    <string name="proxy_unavailable_fallback_subtitle">Comportamiento de respaldo para modos específico/último usado</string>
+    <string name="proxy_fallback_best_proxy">Cambiar al mejor proxy</string>
+    <string name="proxy_fallback_direct">Cambiar a conexión directa</string>
+    <string name="proxy_fallback_keep_current">Mantener estado actual</string>
+    <string name="hide_offline_proxies_title">Ocultar proxys sin conexión</string>
+    <string name="hide_offline_proxies_subtitle">Mostrar solo proxys disponibles o sin comprobar</string>
+    <string name="proxy_export_action">Exportar proxys</string>
+    <string name="proxy_import_action">Importar proxys</string>
+    <string name="proxy_paste_from_clipboard_action">Pegar proxys</string>
+    <string name="proxy_scan_qr_action">Escanear QR de proxy</string>
+    <string name="proxy_export_success">Lista de proxys exportada</string>
+    <string name="proxy_export_failed">Error al exportar la lista de proxys</string>
+    <string name="proxy_import_failed">Error al leer el archivo de importación</string>
+    <string name="proxy_load_failed">No se pudieron cargar los proxys</string>
+    <string name="proxy_existing_load_failed">No se pudieron cargar los proxys existentes</string>
+    <string name="proxy_import_invalid_file">Importación fallida: archivo no válido</string>
+    <string name="proxy_import_summary_format">Importados: %1$d, omitidos: %2$d, inválidos: %3$d</string>
+    <string name="proxy_clipboard_empty">El portapapeles está vacío</string>
+    <string name="proxy_no_links_found">No se encontraron enlaces de proxy</string>
+    <string name="proxy_add_failed">No se pudo añadir el proxy</string>
+    <string name="proxy_save_failed">No se pudo guardar el proxy</string>
+    <string name="proxy_action_set_favorite">Marcar como favorito</string>
+    <string name="proxy_action_remove_favorite">Quitar de favoritos</string>
+    <string name="proxy_action_copy_link">Copiar como enlace</string>
+    <string name="proxy_action_edit">Editar proxy</string>
+    <string name="proxy_action_delete">Eliminar proxy</string>
+    <string name="proxy_link_copied">Enlace de proxy copiado</string>
     <string name="refresh_list_title">Actualizar Lista</string>
     <string name="refresh_list_subtitle">Obtener últimos proxys de la comunidad</string>
     <string name="your_proxies_header">Tus Proxys</string>
@@ -500,6 +554,7 @@
     <string name="remove_all_proxies_title">Eliminar Todos los Proxys</string>
     <string name="remove_all_proxies_confirmation">Esto eliminará todos los proxys configurados de la aplicación. ¿Continuar?</string>
     <string name="no_proxies_label">Sin proxys añadidos</string>
+    <string name="no_proxies_match_filter_label">Ningún proxy coincide con los filtros actuales</string>
     <string name="delete_proxy_title">Eliminar Proxy</string>
     <string name="delete_proxy_confirmation_format">¿Estás seguro de que quieres eliminar el proxy %1$s?</string>
     <string name="new_proxy_title">Nuevo Proxy</string>
@@ -509,7 +564,7 @@
     <string name="secret_hex_placeholder">Secreto (Hex)</string>
     <string name="username_optional_placeholder">Nombre de Usuario (Opcional)</string>
     <string name="password_optional_placeholder">Contraseña (Opcional)</string>
-    <string name="save_changes_button">Guardar Cambios</string>
+    <string name="save_changes_button">Guardar</string>
     <string name="test_proxy_button">Probar</string>
     <string name="test_proxy_result">Resultado de la Prueba</string>
     <string name="action_delete">Eliminar</string>
@@ -686,7 +741,7 @@
     </string>
 
 
-       <!-- Stickers and Emoji -->
+    <!-- Stickers and Emoji -->
     <string name="stickers_emoji_header">Stickers y Emoji</string>
     <string name="stickers_tab">Stickers</string>
     <string name="emoji_tab">Emoji</string>
@@ -796,7 +851,7 @@
     <string name="privacy_search_users_placeholder">Buscar usuarios</string>
     <string name="privacy_no_users_found">No se encontraron usuarios</string>
 
-        <!-- Passcode -->
+    <!-- Passcode -->
     <string name="passcode_change_title">Cambiar Código de Acceso</string>
     <string name="passcode_set_title">Establecer Código de Acceso</string>
     <string name="passcode_change_description">Tu aplicación está protegida actualmente con un código de acceso. Ingresa uno nuevo para cambiarlo.
@@ -912,7 +967,7 @@
     <string name="add_photo_cd">Añadir foto</string>
     <string name="change_photo_cd">Cambiar foto</string>
 
-        <!-- Permissions -->
+    <!-- Permissions -->
     <string name="permissions_required_title">Permisos Requeridos</string>
     <string name="permissions_required_description">Para proporcionar la mejor experiencia, MonoGram necesita los siguientes permisos.</string>
     <string name="permission_notifications_title">Notificaciones</string>
@@ -1957,4 +2012,26 @@
     <string name="auth_phone_code_invalid_error">Código de confirmación inválido</string>
     <string name="auth_password_hash_invalid">Contraseña inválida</string>
     <string name="unexpected_error">Ocurrió un error inesperado</string>
+
+    <!-- ProxyContent -->
+    <string name="proxy_connection_test_button">Ejecutar prueba de conexión</string>
+    <string name="proxy_connection_test_title">Prueba de conexión de Telegram</string>
+    <string name="proxy_connection_test_subtitle">Comprueba la conexión de extremo a extremo a través del centro de datos de Telegram.</string>
+    <string name="proxy_connection_test_running">Ejecutando prueba de conexión...</string>
+    <string name="proxy_connection_test_success">La conexión se ve bien. Puedes guardar y activar este proxy.</string>
+    <string name="proxy_connection_test_hint">La lista principal muestra solo el ping de transporte. Esta prueba es más amplia, por lo que los valores pueden ser mayores.</string>
+    <string name="proxy_tab_proxy">Proxy</string>
+    <string name="proxy_tab_dc_ping">Ping de DC</string>
+    <string name="proxy_tab_settings">Ajustes</string>
+    <string name="proxy_dc_ping_header">Ping de centros de datos</string>
+    <string name="proxy_dc_ping_route_proxy">Ruta: vía %1$s:%2$d</string>
+    <string name="proxy_dc_ping_route_direct">Ruta: conexión directa</string>
+    <string name="proxy_dc_ping_description">Comprueba la disponibilidad de los centros de datos de Telegram usando la ruta actual. Con un proxy habilitado, las comprobaciones se hacen a través de ese proxy; de lo contrario se usa ruta directa.</string>
+    <string name="proxy_dc_ping_run">Ejecutar comprobaciones de DC</string>
+    <string name="proxy_dc_ping_reachable">Accesibles</string>
+    <string name="proxy_dc_ping_average">Promedio</string>
+    <string name="proxy_dc_ping_dc_label">DC %1$d</string>
+    <string name="proxy_dc_ping_dc_subtitle">Sonda del centro de datos de Telegram a través del proxy activo</string>
+    <string name="proxy_dc_ping_direct_label">Ruta directa</string>
+    <string name="proxy_dc_ping_direct_subtitle">Sonda de ruta directa de Telegram</string>
 </resources>

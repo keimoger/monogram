@@ -4,21 +4,55 @@ package org.monogram.presentation.root
 import android.os.Parcelable
 import android.util.Log
 import com.arkivanov.decompose.DelicateDecomposeApi
-import com.arkivanov.decompose.router.stack.*
+import com.arkivanov.decompose.router.stack.ChildStack
+import com.arkivanov.decompose.router.stack.StackNavigation
+import com.arkivanov.decompose.router.stack.bringToFront
+import com.arkivanov.decompose.router.stack.childStack
+import com.arkivanov.decompose.router.stack.navigate
+import com.arkivanov.decompose.router.stack.pop
+import com.arkivanov.decompose.router.stack.popWhile
+import com.arkivanov.decompose.router.stack.push
+import com.arkivanov.decompose.router.stack.replaceAll
 import com.arkivanov.decompose.value.MutableValue
 import com.arkivanov.decompose.value.Value
 import com.arkivanov.decompose.value.update
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.filterIsInstance
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.parcelize.Parcelize
 import kotlinx.serialization.Serializable
+import org.json.JSONObject
 import org.monogram.domain.managers.PhoneManager
 import org.monogram.domain.models.MessageContent
+import org.monogram.domain.models.Proxy
+import org.monogram.domain.models.ProxyCheckResult
+import org.monogram.domain.models.ProxyInput
+import org.monogram.domain.models.ProxyType
 import org.monogram.domain.models.ProxyTypeModel
-import org.monogram.domain.repository.*
+import org.monogram.domain.models.toDomainProxyType
+import org.monogram.domain.repository.AuthRepository
+import org.monogram.domain.repository.AuthStep
+import org.monogram.domain.repository.CacheProvider
+import org.monogram.domain.repository.ExternalNavigator
+import org.monogram.domain.repository.LinkAction
+import org.monogram.domain.repository.LinkHandlerRepository
+import org.monogram.domain.repository.MessageDisplayer
+import org.monogram.domain.repository.MessageRepository
+import org.monogram.domain.repository.ProxyDiagnosticsRepository
+import org.monogram.domain.repository.ProxyNetworkType
+import org.monogram.domain.repository.ProxyRepository
+import org.monogram.domain.repository.StickerRepository
+import org.monogram.domain.repository.StorageRepository
+import org.monogram.domain.repository.UpdateRepository
+import org.monogram.domain.repository.UserRepository
 import org.monogram.presentation.core.util.AppPreferences
 import org.monogram.presentation.core.util.IDownloadUtils
 import org.monogram.presentation.core.util.coRunCatching
@@ -29,7 +63,11 @@ import org.monogram.presentation.features.chats.currentChat.DefaultChatComponent
 import org.monogram.presentation.features.chats.currentChat.components.VideoPlayerPool
 import org.monogram.presentation.features.chats.newChat.DefaultNewChatComponent
 import org.monogram.presentation.features.profile.DefaultProfileComponent
-import org.monogram.presentation.features.profile.admin.*
+import org.monogram.presentation.features.profile.admin.DefaultAdminManageComponent
+import org.monogram.presentation.features.profile.admin.DefaultChatEditComponent
+import org.monogram.presentation.features.profile.admin.DefaultChatPermissionsComponent
+import org.monogram.presentation.features.profile.admin.DefaultMemberListComponent
+import org.monogram.presentation.features.profile.admin.MemberListComponent
 import org.monogram.presentation.features.profile.logs.DefaultProfileLogsComponent
 import org.monogram.presentation.features.stickers.core.toUi
 import org.monogram.presentation.features.webview.DefaultWebViewComponent
@@ -60,7 +98,9 @@ class DefaultRootComponent(
     private val messageRepository: MessageRepository = container.repositories.messageRepository
     private val storageRepository: StorageRepository = container.repositories.storageRepository
     private val linkHandlerRepository: LinkHandlerRepository = container.repositories.linkHandlerRepository
-    private val externalProxyRepository: ExternalProxyRepository = container.repositories.externalProxyRepository
+    private val proxyRepository: ProxyRepository = container.repositories.proxyRepository
+    private val proxyDiagnosticsRepository: ProxyDiagnosticsRepository =
+        container.repositories.proxyDiagnosticsRepository
     private val stickerRepository: StickerRepository = container.repositories.stickerRepository
     private val messageDisplayer: MessageDisplayer = container.utils.messageDisplayer()
     private val externalNavigator: ExternalNavigator = container.utils.externalNavigator()
@@ -81,6 +121,7 @@ class DefaultRootComponent(
 
     private val _proxyToConfirm = MutableStateFlow(RootComponent.ProxyConfirmState())
     override val proxyToConfirm = _proxyToConfirm.asStateFlow()
+    private var proxyCheckRequestToken = 0L
 
     private val _chatToConfirmJoin = MutableStateFlow(RootComponent.ChatConfirmJoinState())
     override val chatToConfirmJoin = _chatToConfirmJoin.asStateFlow()
@@ -114,7 +155,6 @@ class DefaultRootComponent(
         observeStickerLoading()
         checkLockState()
         updateSimCountryIso()
-        initExternalProxies()
     }
 
     private fun observeAuthState() {
@@ -190,29 +230,6 @@ class DefaultRootComponent(
                 userRepository.setCachedSimCountryIso(countryCode)
             }
         }
-    }
-
-    private fun initExternalProxies() {
-        scope.launch {
-            if (appPreferences.isTelegaProxyEnabled.first()) {
-                fetchExternalProxies()
-            }
-        }
-    }
-
-    private suspend fun fetchExternalProxies() {
-        Log.d("RootComponent", "Fetching external proxies...")
-        val addedProxies = externalProxyRepository.fetchExternalProxies()
-        Log.d("RootComponent", "Added ${addedProxies.size} proxies. Starting ping...")
-
-        coroutineScope {
-            addedProxies.forEach { proxy ->
-                launch {
-                    externalProxyRepository.pingProxy(proxy.id)
-                }
-            }
-        }
-        Log.d("RootComponent", "Finished pinging external proxies")
     }
 
     override fun onBack() {
@@ -319,14 +336,27 @@ class DefaultRootComponent(
     }
 
     override fun dismissProxyConfirm() {
+        proxyCheckRequestToken++
         _proxyToConfirm.update { RootComponent.ProxyConfirmState() }
     }
 
     override fun confirmProxy(server: String, port: Int, type: ProxyTypeModel) {
+        proxyCheckRequestToken++
         scope.launch {
-            externalProxyRepository.addProxy(server, port, true, type)
+            val proxy = proxyRepository.addProxy(
+                input = ProxyInput(server = server, port = port, type = type.toDomainProxyType()),
+                enable = true
+            )
             dismissProxyConfirm()
-            messageDisplayer.show("Proxy added and enabled")
+            if (proxy != null) {
+                addProxyToBackup(proxy)
+                ProxyNetworkType.entries.forEach { networkType ->
+                    appPreferences.setLastUsedProxyIdForNetwork(networkType, proxy.id)
+                }
+                messageDisplayer.show("Proxy added and enabled")
+            } else {
+                messageDisplayer.show("Failed to add proxy")
+            }
         }
     }
 
@@ -335,23 +365,62 @@ class DefaultRootComponent(
         val server = currentState.server ?: return
         val port = currentState.port ?: return
         val type = currentState.type ?: return
+        val requestToken = ++proxyCheckRequestToken
 
         _proxyToConfirm.update { it.copy(isChecking = true, ping = null) }
 
         scope.launch {
-            val ping = try {
-                withContext(Dispatchers.IO) {
-                    externalProxyRepository.testProxy(server, port, type)
-                } ?: -1L
-            } catch (e: Exception) {
-                -1L
+            val ping = when (
+                val result = withContext(Dispatchers.IO) {
+                    proxyDiagnosticsRepository.testProxy(
+                        ProxyInput(server = server, port = port, type = type.toDomainProxyType())
+                    )
+                }
+            ) {
+                is ProxyCheckResult.Success -> result.latencyMs
+                is ProxyCheckResult.Failure -> -1L
             }
 
-            if (_proxyToConfirm.value.server == server && _proxyToConfirm.value.port == port) {
+            if (
+                requestToken == proxyCheckRequestToken &&
+                _proxyToConfirm.value.server == server &&
+                _proxyToConfirm.value.port == port &&
+                _proxyToConfirm.value.type == type
+            ) {
                 _proxyToConfirm.update { it.copy(ping = ping, isChecking = false) }
             }
         }
     }
+
+    private fun addProxyToBackup(proxy: Proxy) {
+        val current = appPreferences.userProxyBackups.value.toMutableSet()
+        current.add(serializeProxyBackup(proxy))
+        appPreferences.setUserProxyBackups(current)
+    }
+
+    private fun serializeProxyBackup(proxy: Proxy): String = JSONObject().apply {
+        put("server", proxy.server)
+        put("port", proxy.port)
+        when (val type = proxy.type) {
+            is ProxyType.Mtproto -> {
+                put("type", "mtproto")
+                put("secret", type.secret)
+            }
+
+            is ProxyType.Socks5 -> {
+                put("type", "socks5")
+                put("username", type.username)
+                put("password", type.password)
+            }
+
+            is ProxyType.Http -> {
+                put("type", "http")
+                put("username", type.username)
+                put("password", type.password)
+                put("httpOnly", type.httpOnly)
+            }
+        }
+    }.toString()
 
     override fun dismissChatConfirmJoin() {
         _chatToConfirmJoin.update { RootComponent.ChatConfirmJoinState() }
@@ -395,7 +464,10 @@ class DefaultRootComponent(
 
     private fun openBrowser(url: String) {
         if (!url.startsWith("http")) return
-        navigation.push(Config.WebView(url))
+        navigation.navigate { stack ->
+            val newStack = stack.filterNot { it is Config.WebView && it.url == url }
+            newStack + Config.WebView(url)
+        }
     }
 
     override fun navigateToChat(chatId: Long, messageId: Long?) {

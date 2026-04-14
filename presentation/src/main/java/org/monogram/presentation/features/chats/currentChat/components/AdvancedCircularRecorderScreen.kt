@@ -1,4 +1,4 @@
-@file:OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
+@file:OptIn(ExperimentalMaterial3ExpressiveApi::class)
 
 package org.monogram.presentation.features.chats.currentChat.components
 
@@ -7,11 +7,18 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.SurfaceTexture
-import android.media.*
+import android.media.MediaCodec
+import android.media.MediaCodecInfo
+import android.media.MediaExtractor
+import android.media.MediaFormat
+import android.media.MediaMetadataRetriever
+import android.media.MediaMuxer
+import android.media.MediaRecorder
 import android.opengl.EGL14
 import android.opengl.EGLExt
 import android.opengl.GLES11Ext
 import android.opengl.GLES20
+import android.os.Build
 import android.util.Size
 import android.view.Surface
 import android.widget.Toast
@@ -25,15 +32,40 @@ import androidx.camera.core.resolutionselector.AspectRatioStrategy
 import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.camera.video.*
+import androidx.camera.video.FallbackStrategy
+import androidx.camera.video.FileOutputOptions
+import androidx.camera.video.Quality
+import androidx.camera.video.QualitySelector
+import androidx.camera.video.Recorder
+import androidx.camera.video.Recording
+import androidx.camera.video.VideoCapture
+import androidx.camera.video.VideoRecordEvent
 import androidx.camera.view.PreviewView
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.*
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -41,10 +73,24 @@ import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material3.*
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
-import androidx.compose.runtime.*
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -70,7 +116,7 @@ import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
-import java.util.*
+import java.util.Locale
 
 private const val EGL_RECORDABLE_ANDROID = 0x3142
 
@@ -148,6 +194,7 @@ fun NativeCircularCameraContent(
 
     var lensFacing by remember { mutableIntStateOf(CameraSelector.LENS_FACING_BACK) }
     var camera by remember { mutableStateOf<Camera?>(null) }
+    val sessionAudioRecorder = remember { SessionAudioRecorder(context) }
     var currentZoomRatio by remember { mutableFloatStateOf(1f) }
     var minZoom by remember { mutableFloatStateOf(1f) }
     var maxZoom by remember { mutableFloatStateOf(1f) }
@@ -195,7 +242,12 @@ fun NativeCircularCameraContent(
 
     val videoCapture = remember {
         val recorder = Recorder.Builder()
-            .setQualitySelector(QualitySelector.from(Quality.SD))
+            .setQualitySelector(
+                QualitySelector.fromOrderedList(
+                    listOf(Quality.HD, Quality.SD),
+                    FallbackStrategy.lowerQualityOrHigherThan(Quality.SD)
+                )
+            )
             .build()
 
         val resolutionSelector = ResolutionSelector.Builder()
@@ -210,6 +262,7 @@ fun NativeCircularCameraContent(
 
     DisposableEffect(Unit) {
         onDispose {
+            sessionAudioRecorder.stop(keepFile = false)
             try {
                 val cameraProvider = ProcessCameraProvider.getInstance(context).get()
                 cameraProvider.unbindAll()
@@ -221,6 +274,7 @@ fun NativeCircularCameraContent(
 
     fun finishRecording() {
         if (recordedSegments.isEmpty()) {
+            sessionAudioRecorder.stop(keepFile = false)
             isRecording = false
             recording = null
             recordingStartMs = 0L
@@ -232,6 +286,7 @@ fun NativeCircularCameraContent(
         recording = null
         recordingStartMs = 0L
         elapsedSeconds = 0L
+        val sessionAudioFile = sessionAudioRecorder.stop(keepFile = true)
         try {
             val cameraProvider = ProcessCameraProvider.getInstance(context).get()
             cameraProvider.unbindAll()
@@ -241,7 +296,7 @@ fun NativeCircularCameraContent(
             val finalFile = File(context.filesDir, "CIRCLE_FULL_${System.currentTimeMillis()}.mp4")
             try {
                 val segmentsToProcess = ArrayList(recordedSegments)
-                val transcoder = CircularTranscoder(segmentsToProcess, finalFile)
+                val transcoder = CircularTranscoder(segmentsToProcess, sessionAudioFile, finalFile)
                 transcoder.start()
 
                 withContext(Dispatchers.Main) {
@@ -259,6 +314,7 @@ fun NativeCircularCameraContent(
                     Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
                 }
             } finally {
+                sessionAudioFile?.delete()
                 recordedSegments.clear()
                 isProcessing = false
             }
@@ -286,6 +342,7 @@ fun NativeCircularCameraContent(
             return
         }
 
+        sessionAudioRecorder.stop(keepFile = false)
         recordedSegments.forEach { it.delete() }
         recordedSegments.clear()
         recording = null
@@ -297,6 +354,7 @@ fun NativeCircularCameraContent(
 
     fun handleSegmentSaved(file: File) {
         if (shouldDiscardAll) {
+            sessionAudioRecorder.stop(keepFile = false)
             file.delete()
             recordedSegments.forEach { it.delete() }
             recordedSegments.clear()
@@ -321,6 +379,33 @@ fun NativeCircularCameraContent(
         }
     }
 
+    fun handleSegmentError(error: VideoRecordEvent.Finalize) {
+        sessionAudioRecorder.stop(keepFile = false)
+        if (shouldDiscardAll) {
+            recordedSegments.forEach { it.delete() }
+            recordedSegments.clear()
+            shouldDiscardAll = false
+            isSwitchingCamera = false
+            pendingResume = false
+            isRecording = false
+            recording = null
+            recordingStartMs = 0L
+            elapsedSeconds = 0L
+            onClose()
+            return
+        }
+
+        isSwitchingCamera = false
+        pendingResume = false
+        isRecording = false
+        recording = null
+        recordingStartMs = 0L
+        elapsedSeconds = 0L
+
+        val message = error.cause?.message ?: "Recording error"
+        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+    }
+
     LaunchedEffect(lensFacing) {
         val cameraProvider = ProcessCameraProvider.getInstance(context).get()
         val cameraSelector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
@@ -328,7 +413,7 @@ fun NativeCircularCameraContent(
             cameraProvider.unbindAll()
             val cam = cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, preview, videoCapture)
             camera = cam
-            cam.cameraInfo.zoomState.observe(lifecycleOwner) { state ->
+            cam.cameraInfo.zoomState.value?.let { state ->
                 currentZoomRatio = state.zoomRatio
                 minZoom = state.minZoomRatio
                 maxZoom = state.maxZoomRatio
@@ -343,7 +428,8 @@ fun NativeCircularCameraContent(
                     context,
                     videoCapture,
                     onStart = { rec -> recording = rec },
-                    onSegmentSaved = ::handleSegmentSaved
+                    onSegmentSaved = ::handleSegmentSaved,
+                    onSegmentError = ::handleSegmentError
                 )
             }
         } catch (e: Exception) { e.printStackTrace() }
@@ -361,6 +447,7 @@ fun NativeCircularCameraContent(
                     detectTransformGestures { _, _, zoom, _ ->
                         camera?.let { cam ->
                             val newZoom = (currentZoomRatio * zoom).coerceIn(minZoom, maxZoom)
+                            currentZoomRatio = newZoom
                             cam.cameraControl.setZoomRatio(newZoom)
                         }
                     }
@@ -368,8 +455,13 @@ fun NativeCircularCameraContent(
                 .pointerInput(Unit) {
                     detectTapGestures { offset ->
                         camera?.let { cam ->
-                            val point = previewView.meteringPointFactory.createPoint(offset.x, offset.y)
-                            cam.cameraControl.startFocusAndMetering(FocusMeteringAction.Builder(point).build())
+                            val point =
+                                previewView.meteringPointFactory.createPoint(offset.x, offset.y)
+                            cam.cameraControl.startFocusAndMetering(
+                                FocusMeteringAction.Builder(
+                                    point
+                                ).build()
+                            )
                         }
                     }
                 }
@@ -410,7 +502,7 @@ fun NativeCircularCameraContent(
                     .fillMaxWidth()
                     .statusBarsPadding()
             ) {
-                IconButton(onClick = onClose, enabled = !isRecording && !isProcessing) {
+                IconButton(onClick = ::cancelAndClose, enabled = !isRecording && !isProcessing) {
                     Icon(
                         Icons.Default.Close,
                         contentDescription = stringResource(R.string.recorder_close_cd),
@@ -434,7 +526,11 @@ fun NativeCircularCameraContent(
                         modifier = Modifier
                             .clip(RoundedCornerShape(999.dp))
                             .background(Color.Black.copy(alpha = 0.45f))
-                            .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(999.dp))
+                            .border(
+                                1.dp,
+                                Color.White.copy(alpha = 0.2f),
+                                RoundedCornerShape(999.dp)
+                            )
                             .padding(horizontal = 10.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -532,13 +628,24 @@ fun NativeCircularCameraContent(
                                 detectTapGestures(onTap = {
                                     if (isProcessing || isSwitchingCamera) return@detectTapGestures
                                     if (!isRecording) {
+                                        if (!sessionAudioRecorder.isRecording) {
+                                            val audioStarted = sessionAudioRecorder.start()
+                                            if (!audioStarted) {
+                                                Toast.makeText(
+                                                    context,
+                                                    "Unable to start audio capture",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            }
+                                        }
                                         isRecording = true
                                         recordingStartMs = System.currentTimeMillis()
                                         startNativeSegment(
                                             context,
                                             videoCapture,
                                             onStart = { r -> recording = r },
-                                            onSegmentSaved = ::handleSegmentSaved
+                                            onSegmentSaved = ::handleSegmentSaved,
+                                            onSegmentError = ::handleSegmentError
                                         )
                                     } else {
                                         recording?.stop()
@@ -634,19 +741,21 @@ fun startNativeSegment(
     context: Context,
     videoCapture: VideoCapture<Recorder>,
     onStart: (Recording) -> Unit,
-    onSegmentSaved: (File) -> Unit
+    onSegmentSaved: (File) -> Unit,
+    onSegmentError: (VideoRecordEvent.Finalize) -> Unit
 ) {
     val tempFile = File(context.cacheDir, "segment_${System.currentTimeMillis()}.mp4")
     val outputOptions = FileOutputOptions.Builder(tempFile).build()
 
     val recording = videoCapture.output
         .prepareRecording(context, outputOptions)
-        .withAudioEnabled()
         .start(ContextCompat.getMainExecutor(context)) { event ->
             if (event is VideoRecordEvent.Finalize) {
                 if (!event.hasError()) {
                     onSegmentSaved(tempFile)
                 } else {
+                    tempFile.delete()
+                    onSegmentError(event)
                     if (event.cause != null) event.cause?.printStackTrace()
                 }
             }
@@ -654,11 +763,86 @@ fun startNativeSegment(
     onStart(recording)
 }
 
-class CircularTranscoder(private val inputFiles: List<File>, private val outputFile: File) {
-    private val OUTPUT_WIDTH = 384
-    private val OUTPUT_HEIGHT = 384
-    private val OUTPUT_BIT_RATE = 1_800_000
-    private val FRAME_RATE = 60
+private class SessionAudioRecorder(private val context: Context) {
+    private var recorder: MediaRecorder? = null
+    private var outputFile: File? = null
+
+    var isRecording: Boolean = false
+        private set
+
+    @Suppress("DEPRECATION")
+    fun start(): Boolean {
+        if (isRecording) return true
+
+        return try {
+            val file = File(context.cacheDir, "circle_audio_${System.currentTimeMillis()}.m4a")
+            outputFile = file
+
+            recorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                MediaRecorder(context)
+            } else {
+                MediaRecorder()
+            }
+
+            recorder?.apply {
+                setAudioSource(MediaRecorder.AudioSource.VOICE_RECOGNITION)
+                setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+                setAudioChannels(1)
+                setAudioEncodingBitRate(96_000)
+                setAudioSamplingRate(48_000)
+                setOutputFile(file.absolutePath)
+                prepare()
+                start()
+            }
+
+            isRecording = true
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            stop(keepFile = false)
+            false
+        }
+    }
+
+    fun stop(keepFile: Boolean): File? {
+        val file = outputFile
+        recorder?.let { mediaRecorder ->
+            try {
+                mediaRecorder.stop()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                try {
+                    mediaRecorder.release()
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }
+        recorder = null
+        isRecording = false
+
+        if (!keepFile) {
+            file?.delete()
+            outputFile = null
+            return null
+        }
+
+        outputFile = null
+        return if (file?.exists() == true) file else null
+    }
+}
+
+class CircularTranscoder(
+    private val inputFiles: List<File>,
+    private val inputAudioFile: File?,
+    private val outputFile: File
+) {
+    private val OUTPUT_WIDTH = 640
+    private val OUTPUT_HEIGHT = 640
+    private val OUTPUT_BIT_RATE = 1_920_000
+    private val FRAME_RATE = 30
 
     private var muxerAudioTrackIndex = -1
     private var muxerVideoTrackIndex = -1
@@ -670,9 +854,9 @@ class CircularTranscoder(private val inputFiles: List<File>, private val outputF
         val muxer = MediaMuxer(outputFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
 
         try {
-            processVideoSequence(muxer)
+            val totalVideoDurationUs = processVideoSequence(muxer)
             if (muxerStarted) {
-                processAudioSequence(muxer)
+                processAudioSequence(muxer, totalVideoDurationUs)
             }
         } finally {
             try {
@@ -682,7 +866,7 @@ class CircularTranscoder(private val inputFiles: List<File>, private val outputF
         }
     }
 
-    private fun processVideoSequence(muxer: MediaMuxer) {
+    private fun processVideoSequence(muxer: MediaMuxer): Long {
         val outputFormat = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, OUTPUT_WIDTH, OUTPUT_HEIGHT)
         outputFormat.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
         outputFormat.setInteger(MediaFormat.KEY_BIT_RATE, OUTPUT_BIT_RATE)
@@ -814,14 +998,19 @@ class CircularTranscoder(private val inputFiles: List<File>, private val outputF
                             val newFormat = encoder.outputFormat
                             muxerVideoTrackIndex = muxer.addTrack(newFormat)
 
-                            val audioEx = MediaExtractor()
-                            audioEx.setDataSource(inputFiles[0].absolutePath)
-                            val at = selectTrack(audioEx, "audio/")
-                            if (at >= 0) {
-                                val af = audioEx.getTrackFormat(at)
-                                muxerAudioTrackIndex = muxer.addTrack(af)
+                            if (inputAudioFile?.exists() == true) {
+                                val audioEx = MediaExtractor()
+                                try {
+                                    audioEx.setDataSource(inputAudioFile.absolutePath)
+                                    val at = selectTrack(audioEx, "audio/")
+                                    if (at >= 0) {
+                                        val af = audioEx.getTrackFormat(at)
+                                        muxerAudioTrackIndex = muxer.addTrack(af)
+                                    }
+                                } finally {
+                                    audioEx.release()
+                                }
                             }
-                            audioEx.release()
 
                             muxer.start()
                             muxerStarted = true
@@ -869,43 +1058,46 @@ class CircularTranscoder(private val inputFiles: List<File>, private val outputF
 
         encoder.stop(); encoder.release()
         inputSurface.release()
+        return totalDurationUs
     }
 
-    private fun processAudioSequence(muxer: MediaMuxer) {
-        if (muxerAudioTrackIndex < 0) return
+    private fun processAudioSequence(muxer: MediaMuxer, totalVideoDurationUs: Long) {
+        val audioFile = inputAudioFile ?: return
+        if (muxerAudioTrackIndex < 0 || !audioFile.exists()) return
 
-        var totalDurationUs = 0L
+        val extractor = MediaExtractor()
         val buffer = ByteBuffer.allocate(256 * 1024)
         val bufferInfo = MediaCodec.BufferInfo()
 
-        for (file in inputFiles) {
-            val extractor = MediaExtractor()
-            try {
-                extractor.setDataSource(file.absolutePath)
-                val trackIndex = selectTrack(extractor, "audio/")
-                if (trackIndex < 0) continue
+        try {
+            extractor.setDataSource(audioFile.absolutePath)
+            val trackIndex = selectTrack(extractor, "audio/")
+            if (trackIndex < 0) return
 
-                extractor.selectTrack(trackIndex)
-                var fileLastPts = 0L
+            extractor.selectTrack(trackIndex)
 
-                while (true) {
-                    val chunkSize = extractor.readSampleData(buffer, 0)
-                    if (chunkSize < 0) break
+            while (true) {
+                val chunkSize = extractor.readSampleData(buffer, 0)
+                if (chunkSize < 0) break
 
-                    bufferInfo.offset = 0
-                    bufferInfo.size = chunkSize
-                    bufferInfo.flags = extractor.sampleFlags
-
-                    val originalPts = extractor.sampleTime
-                    fileLastPts = originalPts
-                    bufferInfo.presentationTimeUs = originalPts + totalDurationUs
-
-                    muxer.writeSampleData(muxerAudioTrackIndex, buffer, bufferInfo)
-                    extractor.advance()
+                val originalPts = extractor.sampleTime
+                if (originalPts < 0) break
+                if (totalVideoDurationUs > 0 && originalPts > totalVideoDurationUs) {
+                    break
                 }
-                totalDurationUs += (fileLastPts + 20000L)
-            } catch (e: Exception) { e.printStackTrace() }
-            finally { extractor.release() }
+
+                bufferInfo.offset = 0
+                bufferInfo.size = chunkSize
+                bufferInfo.flags = extractor.sampleFlags
+                bufferInfo.presentationTimeUs = originalPts
+
+                muxer.writeSampleData(muxerAudioTrackIndex, buffer, bufferInfo)
+                extractor.advance()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        } finally {
+            extractor.release()
         }
     }
 
