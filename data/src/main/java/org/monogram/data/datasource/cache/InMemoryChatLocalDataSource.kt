@@ -127,8 +127,15 @@ class InMemoryChatLocalDataSource : ChatLocalDataSource {
         messages.values.forEach { flow ->
             flow.update { current ->
                 current.mapValues { (_, message) ->
-                    if (message.contentType in mediaTypes && (message.mediaPath != null || message.mediaThumbnailPath != null)) {
-                        message.copy(mediaPath = null, mediaThumbnailPath = null)
+                    if (
+                        message.contentType in mediaTypes &&
+                        (message.mediaFileId != 0 || message.mediaPath != null || message.mediaThumbnailPath != null)
+                    ) {
+                        message.copy(
+                            mediaFileId = 0,
+                            mediaPath = null,
+                            mediaThumbnailPath = null
+                        )
                     } else {
                         message
                     }

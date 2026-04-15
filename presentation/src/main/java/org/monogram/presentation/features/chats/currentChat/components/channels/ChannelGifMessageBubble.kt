@@ -229,6 +229,7 @@ fun ChannelGifMessageBubble(
                                         modifier = Modifier.fillMaxSize(),
                                         contentScale = ContentScale.Fit,
                                         animate = !isAnyViewerOpen,
+                                        fileId = content.fileId,
                                         thumbnailData = content.minithumbnail
                                     )
                                 }

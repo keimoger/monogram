@@ -18,17 +18,26 @@ class GifRepositoryImpl(
         return if (gif.fileId == 0L) {
             flowOf(null)
         } else {
-            stickerFileManager.getStickerFile(gif.fileId)
+            stickerFileManager.getGifFile(gif.fileId)
+        }
+    }
+
+    override fun getGifThumbnailFile(fileId: Long): Flow<String?> {
+        return if (fileId == 0L) {
+            flowOf(null)
+        } else {
+            stickerFileManager.getDefaultFile(fileId)
         }
     }
 
     override suspend fun getSavedGifs(): List<GifModel> {
-        val cached = cacheProvider.savedGifs.value
-        if (cached.isNotEmpty()) return cached
-
-        val remoteGifs = remote.getSavedGifs()
-        cacheProvider.setSavedGifs(remoteGifs)
-        return remoteGifs
+        return runCatching {
+            remote.getSavedGifs().also { remoteGifs ->
+                cacheProvider.setSavedGifs(remoteGifs)
+            }
+        }.getOrElse {
+            cacheProvider.savedGifs.value
+        }
     }
 
     override suspend fun addSavedGif(path: String) {

@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -24,14 +25,20 @@ import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 import org.monogram.domain.models.ChatPermissionsModel
 import org.monogram.domain.models.MessageContent
+import org.monogram.domain.models.MessageEntity
+import org.monogram.domain.models.MessageEntityType
 import org.monogram.domain.models.MessageModel
 import org.monogram.domain.models.MessageViewerModel
+import org.monogram.domain.models.StickerSetModel
+import org.monogram.domain.models.StickerType
 import org.monogram.domain.repository.MessageAiRepository
+import org.monogram.domain.repository.StickerRepository
 import org.monogram.presentation.R
 import org.monogram.presentation.core.util.IDownloadUtils
 import org.monogram.presentation.core.util.coRunCatching
 import org.monogram.presentation.features.chats.currentChat.ChatComponent
 import org.monogram.presentation.features.stickers.ui.menu.MessageOptionsMenu
+import org.monogram.presentation.features.stickers.ui.menu.MessagePackMenuOption
 import java.util.Locale
 
 @Composable
@@ -54,6 +61,8 @@ fun ChatMessageOptionsMenu(
 ) {
     val nativeClipboard = localClipboard.nativeClipboard
     val messageRepository: MessageAiRepository = koinInject()
+    val stickerRepository: StickerRepository = koinInject()
+    val customEmojiStickerSets by stickerRepository.customEmojiStickerSets.collectAsState()
     val canCheckViewersList = remember(state.isChannel, state.isGroup, state.memberCount) {
         !state.isChannel && (!state.isGroup || state.memberCount in 1 until 100)
     }
@@ -88,6 +97,12 @@ fun ChatMessageOptionsMenu(
     var messageWithReadDate by remember(selectedMessage) { mutableStateOf(selectedMessage) }
     var messageViewers by remember(selectedMessage) { mutableStateOf<List<MessageViewerModel>>(emptyList()) }
     var isLoadingViewers by remember(selectedMessage) { mutableStateOf(false) }
+    var packOptions by remember(selectedMessage) {
+        mutableStateOf<List<MessagePackMenuOption>>(
+            emptyList()
+        )
+    }
+    val customEmojiIds = remember(selectedMessage) { selectedMessage.collectCustomEmojiIds() }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(selectedMessage, canCheckViewersList) {
@@ -124,6 +139,17 @@ fun ChatMessageOptionsMenu(
         if (canShowViewersList) {
             reloadViewers()
         }
+    }
+
+    LaunchedEffect(selectedMessage, customEmojiStickerSets) {
+        if (customEmojiIds.isNotEmpty() && customEmojiStickerSets.isEmpty()) {
+            coRunCatching { stickerRepository.loadCustomEmojiStickerSets() }
+        }
+        packOptions = resolveMessagePackOptions(
+            message = selectedMessage,
+            stickerRepository = stickerRepository,
+            customEmojiStickerSets = customEmojiStickerSets
+        )
     }
 
     val density = LocalDensity.current
@@ -255,6 +281,7 @@ fun ChatMessageOptionsMenu(
         showTelegramSummary = canUseTelegramSummary,
         showTelegramTranslator = canUseTelegramTranslator,
         showRestoreOriginalText = canRestoreOriginalText,
+        packOptions = packOptions,
         viewers = messageViewers,
         isLoadingViewers = isLoadingViewers,
         onReloadViewers = {
@@ -407,6 +434,10 @@ fun ChatMessageOptionsMenu(
             onRestoreOriginalText()
             onDismiss()
         },
+        onPackClick = { setId ->
+            component.onStickerClick(setId)
+            onDismiss()
+        },
         onReport = {
             component.onReportMessage(selectedMessage)
             onDismiss()
@@ -429,6 +460,104 @@ fun ChatMessageOptionsMenu(
         },
         onDismiss = onDismiss,
     )
+}
+
+private suspend fun resolveMessagePackOptions(
+    message: MessageModel,
+    stickerRepository: StickerRepository,
+    customEmojiStickerSets: List<StickerSetModel>
+): List<MessagePackMenuOption> {
+    val optionsById = linkedMapOf<Long, MessagePackMenuOption>()
+
+    suspend fun addSet(
+        setId: Long,
+        isCustomEmoji: Boolean = false,
+        titleOverride: String? = null
+    ) {
+        if (setId <= 0L || optionsById.containsKey(setId)) return
+
+        val resolvedSet = coRunCatching { stickerRepository.getStickerSet(setId) }.getOrNull()
+        val resolvedType = resolvedSet?.stickerType
+            ?: if (isCustomEmoji) StickerType.CUSTOM_EMOJI else StickerType.REGULAR
+
+        optionsById[setId] = MessagePackMenuOption(
+            setId = setId,
+            title = resolvedSet?.title?.takeIf { it.isNotBlank() } ?: titleOverride,
+            isCustomEmoji = resolvedType == StickerType.CUSTOM_EMOJI,
+            previewPath = resolvedSet?.thumbnail?.path
+                ?: resolvedSet?.stickers?.firstOrNull()?.path,
+            previewEmoji = resolvedSet?.thumbnail?.emoji?.takeIf { it.isNotBlank() }
+                ?: resolvedSet?.stickers?.firstOrNull()?.emoji?.takeIf { it.isNotBlank() }
+        )
+    }
+
+    (message.content as? MessageContent.Sticker)
+        ?.setId
+        ?.takeIf { it > 0L }
+        ?.let { addSet(it) }
+
+    val customEmojiIds = message.collectCustomEmojiIds()
+    if (customEmojiIds.isNotEmpty()) {
+        val setsByCustomEmojiId = linkedMapOf<Long, MessagePackMenuOption>()
+        customEmojiStickerSets.forEach { set ->
+            set.stickers.forEach { sticker ->
+                val customEmojiId = sticker.customEmojiId
+                if (customEmojiId != null && customEmojiId > 0L && customEmojiId !in setsByCustomEmojiId) {
+                    setsByCustomEmojiId[customEmojiId] = MessagePackMenuOption(
+                        setId = set.id,
+                        title = set.title.takeIf { it.isNotBlank() },
+                        isCustomEmoji = true,
+                        previewPath = set.thumbnail?.path ?: set.stickers.firstOrNull()?.path,
+                        previewEmoji = set.thumbnail?.emoji?.takeIf { it.isNotBlank() }
+                            ?: set.stickers.firstOrNull()?.emoji?.takeIf { it.isNotBlank() }
+                    )
+                }
+            }
+        }
+
+        customEmojiIds.forEach { customEmojiId ->
+            val option = setsByCustomEmojiId[customEmojiId] ?: return@forEach
+            if (option.setId !in optionsById) {
+                optionsById[option.setId] = option
+            }
+        }
+    }
+
+    return optionsById.values.toList()
+}
+
+private fun MessageModel.collectCustomEmojiIds(): List<Long> {
+    val customEmojiIds = linkedSetOf<Long>()
+
+    content.collectCustomEmojiIdsTo(customEmojiIds)
+    reactions.forEach { reaction ->
+        reaction.customEmojiId
+            ?.takeIf { it > 0L }
+            ?.let(customEmojiIds::add)
+    }
+
+    return customEmojiIds.toList()
+}
+
+private fun MessageContent.collectCustomEmojiIdsTo(target: MutableSet<Long>) {
+    when (this) {
+        is MessageContent.Text -> entities.collectCustomEmojiIdsTo(target)
+        is MessageContent.Photo -> entities.collectCustomEmojiIdsTo(target)
+        is MessageContent.Video -> entities.collectCustomEmojiIdsTo(target)
+        is MessageContent.Gif -> entities.collectCustomEmojiIdsTo(target)
+        is MessageContent.Document -> entities.collectCustomEmojiIdsTo(target)
+        is MessageContent.Audio -> entities.collectCustomEmojiIdsTo(target)
+        else -> Unit
+    }
+}
+
+private fun List<MessageEntity>.collectCustomEmojiIdsTo(target: MutableSet<Long>) {
+    forEach { entity ->
+        val type = entity.type as? MessageEntityType.CustomEmoji ?: return@forEach
+        if (type.emojiId > 0L) {
+            target.add(type.emojiId)
+        }
+    }
 }
 
 private fun String.withCocoonAttribution(attribution: String): String {

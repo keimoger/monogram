@@ -45,15 +45,15 @@ class TdFileHelper(
     }
 
     fun resolveCachedPath(fileId: Int, storedPath: String?): String? {
-        val fromCache = fileId.takeIf { it != 0 }
-            ?.let { cache.fileCache[it]?.local?.path }
-            ?.takeIf { isValidPath(it) }
-        if (fromCache != null) return fromCache
-
         val fromStored = storedPath
             ?.takeIf { it.isNotBlank() }
             ?.takeIf { isValidPath(it) }
         if (fromStored != null) return fromStored
+
+        val fromCache = fileId.takeIf { it != 0 }
+            ?.let { cache.fileCache[it]?.local?.path }
+            ?.takeIf { isValidPath(it) }
+        if (fromCache != null) return fromCache
 
         return null
     }

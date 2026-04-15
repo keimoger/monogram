@@ -33,6 +33,7 @@ import org.monogram.domain.models.MessageEntity
 import org.monogram.domain.models.MessageModel
 import org.monogram.domain.models.MessageSendOptions
 import org.monogram.domain.models.MessageViewerModel
+import org.monogram.domain.models.PollDraft
 import org.monogram.domain.models.UserModel
 import org.monogram.domain.models.WallpaperModel
 import org.monogram.domain.repository.BotPreferencesProvider
@@ -150,7 +151,9 @@ class DefaultChatComponent(
             highlightedMessageId = initialMessageId,
             lastScrollPosition = cacheProvider.getChatScrollPosition(chatId),
             lastSavedViewport = cacheProvider.getChatViewport(chatId, null),
-            isInstalledFromGooglePlay = distrManager.isInstalledFromGooglePlay()
+            isInstalledFromGooglePlay = distrManager.isInstalledFromGooglePlay(),
+            lastReadInboxMessageId = 0L,
+            unreadSeparatorLastReadInboxMessageId = 0L
         )
     )
 
@@ -240,6 +243,16 @@ class DefaultChatComponent(
 
     private fun initialLoad() {
         scope.launch {
+            chatListRepository.getChatById(chatId)?.let { chat ->
+                if (chat.unreadCount > 0) {
+                    _state.update {
+                        it.copy(
+                            unreadSeparatorCount = chat.unreadCount,
+                            unreadSeparatorLastReadInboxMessageId = chat.lastReadInboxMessageId
+                        )
+                    }
+                }
+            }
             repositoryMessage.openChat(chatId)
             withContext(Dispatchers.Main) {
                 loadChatInfo()
@@ -332,6 +345,25 @@ class DefaultChatComponent(
     ) = store.accept(ChatStore.Intent.SendVideo(videoPath, caption, captionEntities, sendOptions))
 
     override fun onSendGif(gif: GifModel) = store.accept(ChatStore.Intent.SendGif(gif))
+    override fun onSendDocument(
+        documentPath: String,
+        caption: String,
+        captionEntities: List<MessageEntity>,
+        sendOptions: MessageSendOptions
+    ) = store.accept(
+        ChatStore.Intent.SendDocument(
+            documentPath,
+            caption,
+            captionEntities,
+            sendOptions
+        )
+    )
+
+    override fun onSendPoll(
+        poll: PollDraft,
+        sendOptions: MessageSendOptions
+    ) = store.accept(ChatStore.Intent.SendPoll(poll, sendOptions))
+
     override fun onSendGifFile(
         path: String,
         caption: String,

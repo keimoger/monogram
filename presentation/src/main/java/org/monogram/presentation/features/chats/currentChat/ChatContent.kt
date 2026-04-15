@@ -72,6 +72,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
@@ -158,6 +159,7 @@ fun ChatContent(
     var isVisible by remember { mutableStateOf(false) }
     var showInitialLoading by remember { mutableStateOf(false) }
     var isRecordingVideo by remember { mutableStateOf(false) }
+    var topOverlayHeight by remember { mutableStateOf(0.dp) }
 
     // Menu States
     var selectedMessageId by rememberSaveable { mutableStateOf<Long?>(null) }
@@ -193,6 +195,7 @@ fun ChatContent(
     var contentRect by remember { mutableStateOf(Rect.Zero) }
 
     var pendingMediaPaths by rememberSaveable { mutableStateOf<List<String>>(emptyList()) }
+    var pendingDocumentPaths by rememberSaveable { mutableStateOf<List<String>>(emptyList()) }
     var editingPhotoPath by rememberSaveable { mutableStateOf<String?>(null) }
     var editingVideoPath by rememberSaveable { mutableStateOf<String?>(null) }
     var pendingBlockUserId by rememberSaveable { mutableStateOf<Long?>(null) }
@@ -362,6 +365,13 @@ fun ChatContent(
             is ChatScrollCommand.ScrollToBottom -> {
                 scrollState.scrollToChatBottomStaged(
                     isComments = isComments,
+                    animated = command.animated && state.isChatAnimationsEnabled
+                )
+                component.onScrollCommandConsumed()
+            }
+
+            is ChatScrollCommand.ScrollToStart -> {
+                scrollState.scrollToChatStartStaged(
                     animated = command.animated && state.isChatAnimationsEnabled
                 )
                 component.onScrollCommandConsumed()
@@ -574,6 +584,7 @@ fun ChatContent(
             else albumPaths.add(file.absolutePath)
         }
         if (albumPaths.isNotEmpty()) pendingMediaPaths = (pendingMediaPaths + albumPaths).distinct()
+        if (albumPaths.isNotEmpty()) pendingDocumentPaths = emptyList()
     }
 
 
@@ -773,36 +784,44 @@ fun ChatContent(
                         .semantics { contentDescription = "ChatContent" },
                     containerColor = Color.Transparent,
                     topBar = {
-                        ChatContentTopBar(
-                            topBarState = topBarUiState,
-                            selectedCount = selectedCount,
-                            canRevokeSelected = canRevokeSelected,
-                            component = component,
-                            contentAlpha = contentAlpha,
-                            onBack = {
-                                keyboardController?.hide()
-                                if (state.currentTopicId != null) {
-                                    component.onTopicClick(0)
-                                } else {
-                                    component.onBackClicked()
-                                }
-                            },
-                            onOpenMenu = {
-                                keyboardController?.hide()
-                                focusManager.clearFocus(force = true)
-                            },
-                            onPinnedMessageClick = { msg -> scrollToMessageState.value(msg) },
-                            showBack = !isTablet
-                        )
+                        Box(
+                            modifier = Modifier.onSizeChanged {
+                                topOverlayHeight = with(density) { it.height.toDp() }
+                            }
+                        ) {
+                            ChatContentTopBar(
+                                topBarState = topBarUiState,
+                                selectedCount = selectedCount,
+                                canRevokeSelected = canRevokeSelected,
+                                component = component,
+                                contentAlpha = contentAlpha,
+                                onBack = {
+                                    keyboardController?.hide()
+                                    if (state.currentTopicId != null) {
+                                        component.onTopicClick(0)
+                                    } else {
+                                        component.onBackClicked()
+                                    }
+                                },
+                                onOpenMenu = {
+                                    keyboardController?.hide()
+                                    focusManager.clearFocus(force = true)
+                                },
+                                onPinnedMessageClick = { msg -> scrollToMessageState.value(msg) },
+                                showBack = !isTablet
+                            )
+                        }
                     },
                     bottomBar = {
                         if (showInputBar) {
-                            val inputBarState = remember(state, pendingMediaPaths) {
+                            val inputBarState =
+                                remember(state, pendingMediaPaths, pendingDocumentPaths) {
                                 ChatInputBarState(
                                     replyMessage = state.replyMessage,
                                     editingMessage = state.editingMessage,
                                     draftText = state.draftText,
                                     pendingMediaPaths = pendingMediaPaths,
+                                    pendingDocumentPaths = pendingDocumentPaths,
                                     isClosed = state.topics.find { it.id.toLong() == state.currentTopicId }?.isClosed
                                         ?: false,
                                     permissions = state.permissions,
@@ -828,7 +847,8 @@ fun ChatContent(
                                 )
                             }
 
-                            val inputBarActions = remember(component, pendingMediaPaths) {
+                            val inputBarActions =
+                                remember(component, pendingMediaPaths, pendingDocumentPaths) {
                                 ChatInputBarActions(
                                     onSend = { text, entities, options ->
                                         component.onSendMessage(
@@ -877,8 +897,32 @@ fun ChatContent(
                                             else component.onSendPhoto(it, caption, captionEntities, options)
                                         }
                                         pendingMediaPaths = emptyList()
+                                        pendingDocumentPaths = emptyList()
                                     },
-                                    onMediaOrderChange = { pendingMediaPaths = it },
+                                    onSendDocuments = { paths, caption, captionEntities, options ->
+                                        paths.forEachIndexed { index, path ->
+                                            component.onSendDocument(
+                                                path,
+                                                caption = if (index == 0) caption else "",
+                                                captionEntities = if (index == 0) captionEntities else emptyList(),
+                                                sendOptions = options
+                                            )
+                                        }
+                                        pendingDocumentPaths = emptyList()
+                                        pendingMediaPaths = emptyList()
+                                    },
+                                    onMediaOrderChange = {
+                                        pendingMediaPaths = it
+                                        if (it.isNotEmpty()) {
+                                            pendingDocumentPaths = emptyList()
+                                        }
+                                    },
+                                    onDocumentOrderChange = {
+                                        pendingDocumentPaths = it
+                                        if (it.isNotEmpty()) {
+                                            pendingMediaPaths = emptyList()
+                                        }
+                                    },
                                     onMediaClick = { path ->
                                         if (path.endsWith(".mp4")) {
                                             editingVideoPath = path
@@ -923,6 +967,9 @@ fun ChatContent(
                                     onAttachBotClick = { bot ->
                                         component.onOpenAttachBot(bot.botUserId, bot.name)
                                     },
+                                    onSendPoll = { poll ->
+                                        component.onSendPoll(poll)
+                                    },
                                     onRefreshScheduledMessages = { component.onRefreshScheduledMessages() },
                                     onEditScheduledMessage = { message -> component.onEditMessage(message) },
                                     onDeleteScheduledMessage = { message -> component.onDeleteMessage(message) },
@@ -964,7 +1011,7 @@ fun ChatContent(
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(padding)
+                            .padding(bottom = padding.calculateBottomPadding())
                             .consumeWindowInsets(padding)
                             .onGloballyPositioned { coordinates ->
                                 contentRect = Rect(
@@ -1164,6 +1211,14 @@ fun ChatContent(
 
                             ChatContentList(
                                 showNavPadding = false,
+                                topOverlayPadding = if (
+                                    (state.viewAsTopics && state.currentTopicId == null) ||
+                                    state.rootMessage != null
+                                ) {
+                                    topOverlayHeight
+                                } else {
+                                    0.dp
+                                },
                                 state = state,
                                 component = component,
                                 scrollState = scrollState,
@@ -1639,6 +1694,29 @@ private suspend fun LazyListState.scrollToChatBottomStaged(
     }
 
     scrollToItem(targetIndex)
+}
+
+private suspend fun LazyListState.scrollToChatStartStaged(
+    animated: Boolean
+) {
+    val total = layoutInfo.totalItemsCount
+    if (total <= 0) return
+
+    if (animated) {
+        animateScrollToItem(0)
+    } else {
+        scrollToItem(0)
+    }
+
+    val targetInfo = layoutInfo.visibleItemsInfo.firstOrNull { it.index == 0 }
+    if (targetInfo != null) {
+        val delta = (targetInfo.offset - layoutInfo.viewportStartOffset).toFloat()
+        if (abs(delta) > 1f) {
+            scrollBy(delta)
+        }
+    }
+
+    scrollToItem(0)
 }
 
 private suspend fun awaitGroupedIndex(

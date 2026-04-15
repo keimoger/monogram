@@ -711,6 +711,7 @@ val dataModule = module {
     single {
         StickerFileManager(
             localDataSource = get(),
+            fileDataSource = get(),
             fileQueue = get(),
             fileUpdateHandler = get(),
             dispatchers = get(),

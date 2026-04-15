@@ -31,7 +31,7 @@ class CachePreferences(private val context: Context) : CacheProvider {
     private val _cachedSimCountryIso = MutableStateFlow<String?>(null)
     override val cachedSimCountryIso: StateFlow<String?> = _cachedSimCountryIso
 
-    private val _savedGifs = MutableStateFlow(getSavedGifsFromPrefs())
+    private val _savedGifs = MutableStateFlow<List<GifModel>>(emptyList())
     override val savedGifs: StateFlow<List<GifModel>> = _savedGifs
 
     private val _installedStickerSets = MutableStateFlow<List<StickerSetModel>>(emptyList())
@@ -39,6 +39,10 @@ class CachePreferences(private val context: Context) : CacheProvider {
 
     private val _customEmojiStickerSets = MutableStateFlow<List<StickerSetModel>>(emptyList())
     override val customEmojiStickerSets: StateFlow<List<StickerSetModel>> = _customEmojiStickerSets
+
+    init {
+        clearLegacySavedGifsCache()
+    }
 
     override fun addRecentEmoji(recentEmoji: RecentEmojiModel) {
         val current = _recentEmojis.value.toMutableList()
@@ -131,7 +135,6 @@ class CachePreferences(private val context: Context) : CacheProvider {
     }
 
     override fun setSavedGifs(gifs: List<GifModel>) {
-        prefs.edit().putString(KEY_SAVED_GIFS, Json.encodeToString(gifs)).apply()
         _savedGifs.value = gifs
     }
 
@@ -155,12 +158,9 @@ class CachePreferences(private val context: Context) : CacheProvider {
         _customEmojiStickerSets.value = emptyList()
     }
 
-    private fun getSavedGifsFromPrefs(): List<GifModel> {
-        val json = prefs.getString(KEY_SAVED_GIFS, null) ?: return emptyList()
-        return try {
-            Json.decodeFromString(json)
-        } catch (e: Exception) {
-            emptyList()
+    private fun clearLegacySavedGifsCache() {
+        if (prefs.contains(KEY_SAVED_GIFS)) {
+            prefs.edit().remove(KEY_SAVED_GIFS).apply()
         }
     }
 

@@ -1,22 +1,40 @@
 package org.monogram.presentation.features.chats.currentChat.components.pins
 
-import androidx.compose.animation.*
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.rounded.FormatListBulleted
 import androidx.compose.material.icons.rounded.PushPin
-import androidx.compose.material3.*
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -39,51 +57,57 @@ fun PinnedMessageBar(
 ) {
     val pinnedText = if (count > 1) stringResource(R.string.pinned_messages) else stringResource(R.string.pinned_message)
 
-    Surface(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 6.dp)
-            .clickable(onClick = if (count > 1) onShowAll else onClick),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f),
-        shape = RoundedCornerShape(16.dp),
-        tonalElevation = 4.dp
     ) {
-        Row(
+        Surface(
             modifier = Modifier
-                .padding(start = 16.dp, end = 8.dp, top = 10.dp, bottom = 10.dp)
-                .height(IntrinsicSize.Min),
-            verticalAlignment = Alignment.CenterVertically
+                .fillMaxWidth()
+                .clickable(onClick = if (count > 1) onShowAll else onClick),
+            color = MaterialTheme.colorScheme.surface,
+            shape = RoundedCornerShape(16.dp),
+            tonalElevation = 2.dp,
+            shadowElevation = 4.dp
         ) {
-            Box(
+            Row(
                 modifier = Modifier
-                    .width(4.dp)
-                    .fillMaxHeight()
-                    .background(MaterialTheme.colorScheme.primary, CircleShape)
-            )
-
-            WidthSpacer(16.dp)
-
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(vertical = 2.dp)
+                    .padding(start = 16.dp, end = 8.dp, top = 10.dp, bottom = 10.dp)
+                    .height(IntrinsicSize.Min),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                PinHeader(
-                    pinnedText = pinnedText,
-                    pinCount = count
+                Box(
+                    modifier = Modifier
+                        .width(4.dp)
+                        .fillMaxHeight()
+                        .background(MaterialTheme.colorScheme.primary, CircleShape)
                 )
 
-                HeightSpacer(2.dp)
+                WidthSpacer(16.dp)
 
-                AnimatedMessageFooter(message = message)
-            }
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(vertical = 2.dp)
+                ) {
+                    PinHeader(
+                        pinnedText = pinnedText,
+                        pinCount = count
+                    )
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (count > 1) {
-                    ShowAllButton(onClick = onShowAll)
+                    HeightSpacer(2.dp)
+
+                    AnimatedMessageFooter(message = message)
                 }
 
-                CloseButton(onClick = onClose)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (count > 1) {
+                        ShowAllButton(onClick = onShowAll)
+                    }
+
+                    CloseButton(onClick = onClose)
+                }
             }
         }
     }

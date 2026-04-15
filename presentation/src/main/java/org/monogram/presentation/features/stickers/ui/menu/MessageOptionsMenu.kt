@@ -143,6 +143,14 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+data class MessagePackMenuOption(
+    val setId: Long,
+    val title: String? = null,
+    val isCustomEmoji: Boolean = false,
+    val previewPath: String? = null,
+    val previewEmoji: String? = null
+)
+
 @Composable
 fun MessageOptionsMenu(
     message: MessageModel,
@@ -166,6 +174,7 @@ fun MessageOptionsMenu(
     showTelegramSummary: Boolean = false,
     showTelegramTranslator: Boolean = false,
     showRestoreOriginalText: Boolean = false,
+    packOptions: List<MessagePackMenuOption> = emptyList(),
     viewers: List<MessageViewerModel> = emptyList(),
     isLoadingViewers: Boolean = false,
     onReloadViewers: () -> Unit = {},
@@ -186,6 +195,7 @@ fun MessageOptionsMenu(
     onTelegramSummary: () -> Unit = {},
     onTelegramTranslator: () -> Unit = {},
     onRestoreOriginalText: () -> Unit = {},
+    onPackClick: (Long) -> Unit = {},
     onReport: () -> Unit = {},
     onBlock: () -> Unit = {},
     onRestrict: () -> Unit = {},
@@ -262,6 +272,7 @@ fun MessageOptionsMenu(
         showTelegramSummary,
         showTelegramTranslator,
         showRestoreOriginalText,
+        packOptions,
         canCopyLink,
         canReport,
         canBlock,
@@ -280,7 +291,8 @@ fun MessageOptionsMenu(
             canRestrict = canRestrict,
             showTelegramSummary = showTelegramSummary,
             showTelegramTranslator = showTelegramTranslator,
-            showRestoreOriginalText = showRestoreOriginalText
+            showRestoreOriginalText = showRestoreOriginalText,
+            hasPackAction = packOptions.isNotEmpty()
         )
     }
     var savedSections by rememberSaveable(message.id, stateSaver = MessageMenuSections.Saver) {
@@ -366,8 +378,10 @@ fun MessageOptionsMenu(
     var menuPage by remember { mutableStateOf(MenuPage.Main) }
     val sections = savedSections
 
-    LaunchedEffect(menuPage, sections.hasMoreSection) {
+    LaunchedEffect(menuPage, sections.hasMoreSection, sections.hasPackAction) {
         if (menuPage == MenuPage.More && !sections.hasMoreSection) {
+            menuPage = MenuPage.Main
+        } else if (menuPage == MenuPage.Packs && !sections.hasPackAction) {
             menuPage = MenuPage.Main
         }
     }
@@ -642,6 +656,36 @@ fun MessageOptionsMenu(
                             )
                         }
 
+                        if (sections.hasPackAction) {
+                            val singlePack = packOptions.singleOrNull()
+                            InternalMenuOptionItem(
+                                icon = Icons.Rounded.AutoAwesome,
+                                text = when {
+                                    packOptions.size > 1 -> stringResource(R.string.menu_view_used_packs)
+                                    singlePack?.isCustomEmoji == true -> stringResource(R.string.menu_view_emoji_pack)
+                                    else -> stringResource(R.string.menu_view_sticker_pack)
+                                },
+                                leadingContent = if (packOptions.size == 1 && singlePack != null) {
+                                    { PackPreview(singlePack) }
+                                } else {
+                                    null
+                                },
+                                trailingIcon = if (packOptions.size > 1) Icons.Rounded.ChevronRight else null,
+                                onClick = {
+                                    if (packOptions.size > 1) {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        menuPage = MenuPage.Packs
+                                    } else {
+                                        singlePack?.let { option ->
+                                            animateOutAndDismiss {
+                                                onPackClick(option.setId)
+                                            }
+                                        }
+                                    }
+                                }
+                            )
+                        }
+
                         if (sections.hasReplyAction) {
                             InternalMenuOptionItem(
                                 icon = Icons.AutoMirrored.Rounded.Reply,
@@ -803,6 +847,46 @@ fun MessageOptionsMenu(
                                 )
                             }
                         }
+                    } else if (page == MenuPage.Packs) {
+                        InternalMenuOptionItem(
+                            icon = Icons.AutoMirrored.Rounded.ArrowBack,
+                            text = stringResource(R.string.cd_back),
+                            iconTint = MaterialTheme.colorScheme.primary,
+                            textColor = MaterialTheme.colorScheme.primary,
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                if (hasReactionsInMessage) {
+                                    suppressNextReactionsAppearanceAnimation = true
+                                }
+                                menuPage = MenuPage.Main
+                            }
+                        )
+
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        )
+
+                        packOptions.forEach { option ->
+                            InternalMenuOptionItem(
+                                icon = Icons.Rounded.AutoAwesome,
+                                text = option.title ?: stringResource(
+                                    if (option.isCustomEmoji) {
+                                        R.string.emoji_pack_title
+                                    } else {
+                                        R.string.sticker_pack_title
+                                    }
+                                ),
+                                leadingContent = {
+                                    PackPreview(option)
+                                },
+                                onClick = {
+                                    animateOutAndDismiss {
+                                        onPackClick(option.setId)
+                                    }
+                                }
+                            )
+                        }
                     } else if (page == MenuPage.Cocoon) {
                         InternalMenuOptionItem(
                             icon = Icons.AutoMirrored.Rounded.ArrowBack,
@@ -921,6 +1005,7 @@ fun MessageOptionsMenu(
 
 private data class MessageMenuSections(
     val hasViewersSection: Boolean,
+    val hasPackAction: Boolean,
     val hasReplyAction: Boolean,
     val hasPinAction: Boolean,
     val hasEditAction: Boolean,
@@ -943,6 +1028,7 @@ private data class MessageMenuSections(
     fun merge(other: MessageMenuSections): MessageMenuSections {
         return MessageMenuSections(
             hasViewersSection = hasViewersSection || other.hasViewersSection,
+            hasPackAction = hasPackAction || other.hasPackAction,
             hasReplyAction = hasReplyAction || other.hasReplyAction,
             hasPinAction = hasPinAction || other.hasPinAction,
             hasEditAction = hasEditAction || other.hasEditAction,
@@ -969,6 +1055,7 @@ private data class MessageMenuSections(
             save = {
                 listOf(
                     it.hasViewersSection,
+                    it.hasPackAction,
                     it.hasReplyAction,
                     it.hasPinAction,
                     it.hasEditAction,
@@ -992,24 +1079,25 @@ private data class MessageMenuSections(
             restore = { values ->
                 MessageMenuSections(
                     hasViewersSection = values[0],
-                    hasReplyAction = values[1],
-                    hasPinAction = values[2],
-                    hasEditAction = values[3],
-                    hasCopyAction = values[4],
-                    hasForwardAction = values[5],
-                    hasCocoonSection = values[6],
-                    hasMoreSection = values[7],
-                    hasDeleteAction = values[8],
-                    hasCommentsAction = values[9],
-                    hasCopyLinkAction = values[10],
-                    hasDownloadAction = values[11],
-                    hasReportAction = values[12],
-                    hasBlockAction = values[13],
-                    hasRestrictAction = values[14],
-                    hasTelegramSummaryAction = values[15],
-                    hasTelegramTranslatorAction = values[16],
-                    hasRestoreOriginalTextAction = values[17],
-                    hasRepeatAction = values[18],
+                    hasPackAction = values[1],
+                    hasReplyAction = values[2],
+                    hasPinAction = values[3],
+                    hasEditAction = values[4],
+                    hasCopyAction = values[5],
+                    hasForwardAction = values[6],
+                    hasCocoonSection = values[7],
+                    hasMoreSection = values[8],
+                    hasDeleteAction = values[9],
+                    hasCommentsAction = values[10],
+                    hasCopyLinkAction = values[11],
+                    hasDownloadAction = values[12],
+                    hasReportAction = values[13],
+                    hasBlockAction = values[14],
+                    hasRestrictAction = values[15],
+                    hasTelegramSummaryAction = values[16],
+                    hasTelegramTranslatorAction = values[17],
+                    hasRestoreOriginalTextAction = values[18],
+                    hasRepeatAction = values[19],
                 )
             }
         )
@@ -1027,7 +1115,8 @@ private fun buildMenuSections(
     canRestrict: Boolean,
     showTelegramSummary: Boolean,
     showTelegramTranslator: Boolean,
-    showRestoreOriginalText: Boolean
+    showRestoreOriginalText: Boolean,
+    hasPackAction: Boolean
 ): MessageMenuSections {
     val hasCocoonActions = showTelegramSummary || showTelegramTranslator || showRestoreOriginalText
     val hasMoreActions = message.canGetMessageThread ||
@@ -1037,6 +1126,7 @@ private fun buildMenuSections(
             canBlock
     return MessageMenuSections(
         hasViewersSection = showViewersList,
+        hasPackAction = hasPackAction,
         hasReplyAction = canWrite,
         hasPinAction = canPinMessages,
         hasEditAction = message.canBeEdited,
@@ -1062,6 +1152,7 @@ private enum class MenuPage {
     Main,
     More,
     Cocoon,
+    Packs,
     Viewers
 }
 
@@ -1325,6 +1416,7 @@ private fun InternalMenuOptionItem(
     onClick: () -> Unit,
     textColor: Color = MaterialTheme.colorScheme.onSurface,
     iconTint: Color = MaterialTheme.colorScheme.onSurface,
+    leadingContent: (@Composable () -> Unit)? = null,
     trailingIcon: ImageVector? = null,
     trailingContent: (@Composable () -> Unit)? = null
 ) {
@@ -1335,12 +1427,21 @@ private fun InternalMenuOptionItem(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = iconTint,
-            modifier = Modifier.size(22.dp)
-        )
+        if (leadingContent != null) {
+            Box(
+                modifier = Modifier.size(22.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                leadingContent()
+            }
+        } else {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = iconTint,
+                modifier = Modifier.size(22.dp)
+            )
+        }
         Spacer(modifier = Modifier.width(16.dp))
         Text(
             text = text,
@@ -1356,6 +1457,36 @@ private fun InternalMenuOptionItem(
                 contentDescription = null,
                 tint = iconTint.copy(alpha = 0.5f),
                 modifier = Modifier.size(18.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun PackPreview(option: MessagePackMenuOption) {
+    when {
+        !option.previewPath.isNullOrEmpty() -> {
+            StickerImage(
+                path = option.previewPath,
+                modifier = Modifier.size(22.dp),
+                animate = false
+            )
+        }
+
+        !option.previewEmoji.isNullOrEmpty() -> {
+            Text(
+                text = option.previewEmoji,
+                fontSize = 18.sp,
+                maxLines = 1
+            )
+        }
+
+        else -> {
+            Icon(
+                imageVector = Icons.Rounded.AutoAwesome,
+                contentDescription = null,
+                modifier = Modifier.size(22.dp),
+                tint = MaterialTheme.colorScheme.onSurface
             )
         }
     }

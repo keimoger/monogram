@@ -1,6 +1,13 @@
 package org.monogram.presentation.features.chats.currentChat.impl
 
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.monogram.domain.models.ChatModel
 import org.monogram.domain.models.ChatType
@@ -132,6 +139,16 @@ internal fun DefaultChatComponent.updateChatState(chat: ChatModel) {
     _state.update { currentState ->
         val isDetailedInfoMissing = (chat.isGroup || chat.isChannel) && chat.memberCount == 0
         val canWrite = if (chat.isAdmin) true else chat.permissions.canSendBasicMessages
+        val unreadSeparatorCount = when {
+            currentState.unreadSeparatorCount > 0 -> currentState.unreadSeparatorCount
+            chat.unreadCount > 0 -> chat.unreadCount
+            else -> 0
+        }
+        val unreadSeparatorLastReadInboxMessageId = when {
+            currentState.unreadSeparatorCount > 0 -> currentState.unreadSeparatorLastReadInboxMessageId
+            chat.unreadCount > 0 -> chat.lastReadInboxMessageId
+            else -> 0L
+        }
 
         currentState.copy(
             chatTitle = chat.title,
@@ -148,6 +165,7 @@ internal fun DefaultChatComponent.updateChatState(chat: ChatModel) {
             memberCount = if (!isDetailedInfoMissing) chat.memberCount else currentState.memberCount,
             onlineCount = if (!isDetailedInfoMissing) chat.onlineCount else currentState.onlineCount,
             unreadCount = chat.unreadCount,
+            unreadSeparatorCount = unreadSeparatorCount,
             unreadMentionCount = chat.unreadMentionCount,
             unreadReactionCount = chat.unreadReactionCount,
             userStatus = chat.userStatus,
@@ -155,7 +173,9 @@ internal fun DefaultChatComponent.updateChatState(chat: ChatModel) {
             viewAsTopics = chat.viewAsTopics,
             isMuted = chat.isMuted,
             permissions = chat.permissions,
-            isMember = chat.isMember
+            isMember = chat.isMember,
+            lastReadInboxMessageId = chat.lastReadInboxMessageId,
+            unreadSeparatorLastReadInboxMessageId = unreadSeparatorLastReadInboxMessageId,
         )
     }
 }

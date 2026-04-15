@@ -14,6 +14,7 @@ interface StickerRemoteSource {
     suspend fun toggleStickerSetArchived(setId: Long, isArchived: Boolean)
     suspend fun reorderStickerSets(type: StickerType, setIds: List<Long>)
     suspend fun searchStickers(query: String): List<StickerModel>
+    suspend fun getStickerEmojiHints(query: String): List<String>
     suspend fun searchStickerSets(query: String): List<StickerSetModel>
     suspend fun clearRecentStickers()
 }

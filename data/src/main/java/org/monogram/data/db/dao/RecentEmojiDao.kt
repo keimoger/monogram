@@ -15,7 +15,16 @@ interface RecentEmojiDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertRecentEmoji(emoji: RecentEmojiEntity)
 
-    @Query("DELETE FROM recent_emojis WHERE emoji = :emoji AND stickerId = :stickerId")
+    @Query(
+        """
+        DELETE FROM recent_emojis
+        WHERE emoji = :emoji
+          AND (
+            (stickerId IS NULL AND :stickerId IS NULL)
+            OR stickerId = :stickerId
+          )
+        """
+    )
     suspend fun deleteRecentEmoji(emoji: String, stickerId: Long?)
 
     @Query("DELETE FROM recent_emojis")

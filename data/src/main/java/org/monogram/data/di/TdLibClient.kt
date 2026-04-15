@@ -13,12 +13,12 @@ import org.drinkless.tdlib.Client
 import org.drinkless.tdlib.TdApi
 import org.monogram.data.gateway.TdLibException
 import org.monogram.data.gateway.isExpectedProxyFailure
-import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.resume
 
 internal class TdLibClient {
     private val TAG = "TdLibClient"
-    private val globalRetryAfterUntilMs = AtomicLong(0L)
+    private val retryAfterUntilMsByScope = ConcurrentHashMap<String, Long>()
     private val _updates = MutableSharedFlow<TdApi.Update>(
         replay = 3,
         extraBufferCapacity = 64,
@@ -92,7 +92,7 @@ internal class TdLibClient {
 
         var retries = 0
         while (true) {
-            waitForGlobalRetryWindow()
+            waitForRetryWindow(function)
             val result = awaitResult(function)
 
             if (result !is TdApi.Error) {
@@ -103,12 +103,12 @@ internal class TdLibClient {
             if (result.code == 429 && retries < 3) {
                 retries++
                 val retryAfterMs = parseRetryAfterMs(result.message)
-                Log.w(TAG, "Rate limited for $function, retrying in ${retryAfterMs}ms (attempt $retries)")
-                if (function is TdApi.GetUserFullInfo) {
-                    delay(retryAfterMs)
-                } else {
-                    updateGlobalRetryWindow(retryAfterMs)
-                }
+                val retryScope = retryScope(function)
+                Log.w(
+                    TAG,
+                    "Rate limited for $function, scope=$retryScope, retrying in ${retryAfterMs}ms (attempt $retries)"
+                )
+                updateRetryWindow(retryScope, retryAfterMs)
                 continue
             }
 
@@ -140,18 +140,30 @@ internal class TdLibClient {
             }
         }
 
-    private suspend fun waitForGlobalRetryWindow() {
-        val waitMs = (globalRetryAfterUntilMs.get() - System.currentTimeMillis()).coerceAtLeast(0L)
+    private suspend fun waitForRetryWindow(function: TdApi.Function<*>) {
+        val retryScope = retryScope(function)
+        val retryUntilMs = retryAfterUntilMsByScope[retryScope] ?: 0L
+        val waitMs = (retryUntilMs - System.currentTimeMillis()).coerceAtLeast(0L)
         if (waitMs > 0L) delay(waitMs)
     }
 
-    private fun updateGlobalRetryWindow(retryAfterMs: Long) {
+    private fun updateRetryWindow(retryScope: String, retryAfterMs: Long) {
         val target = System.currentTimeMillis() + retryAfterMs
-        while (true) {
-            val current = globalRetryAfterUntilMs.get()
-            if (target <= current) return
-            if (globalRetryAfterUntilMs.compareAndSet(current, target)) return
+        retryAfterUntilMsByScope.compute(retryScope) { _, current ->
+            maxOf(current ?: 0L, target)
         }
+    }
+
+    private fun retryScope(function: TdApi.Function<*>): String = when (function) {
+        is TdApi.GetInlineQueryResults -> "inline_query_results"
+        is TdApi.SearchMessages -> "search_messages"
+        is TdApi.SearchChats -> "search_chats"
+        is TdApi.SearchPublicChat -> "search_public_chat"
+        is TdApi.GetUserFullInfo -> "user_full_info"
+        is TdApi.GetUser -> "user"
+        is TdApi.GetChat -> "chat"
+        is TdApi.LoadChats -> "load_chats"
+        else -> function.javaClass.simpleName
     }
 
     private fun parseRetryAfterMs(message: String?): Long {

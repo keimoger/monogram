@@ -73,7 +73,11 @@ class RoomStickerLocalDataSource(
 
     override fun getRecentEmojis(): Flow<List<RecentEmojiModel>> {
         return recentEmojiDao.getRecentEmojis()
-            .map { entities -> entities.mapNotNull { it.toModel() } }
+            .map { entities ->
+                entities
+                    .mapNotNull { it.toModel() }
+                    .distinctBy { model -> model.emoji to model.sticker?.id }
+            }
     }
 
     override suspend fun addRecentEmoji(recentEmoji: RecentEmojiModel) {

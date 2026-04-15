@@ -65,6 +65,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -83,6 +84,7 @@ import org.monogram.presentation.features.chats.currentChat.components.AlbumMess
 import org.monogram.presentation.features.chats.currentChat.components.DateSeparator
 import org.monogram.presentation.features.chats.currentChat.components.MessageBubbleContainer
 import org.monogram.presentation.features.chats.currentChat.components.ServiceMessage
+import org.monogram.presentation.features.chats.currentChat.components.UnreadMessagesSeparator
 import org.monogram.presentation.features.chats.currentChat.components.channels.ChannelMessageBubbleContainer
 import org.monogram.presentation.features.stickers.ui.view.StickerImage
 import java.io.File
@@ -98,6 +100,7 @@ fun ChatContentList(
     onPhotoDownload: (Int) -> Unit,
     modifier: Modifier = Modifier,
     showNavPadding: Boolean = false,
+    topOverlayPadding: Dp = 0.dp,
     onVideoClick: (MessageModel, String?, String?) -> Unit,
     onDocumentClick: (MessageModel) -> Unit,
     onAudioClick: (MessageModel) -> Unit,
@@ -116,6 +119,28 @@ fun ChatContentList(
     var lastOlderLoadTriggerUptimeMs by remember { mutableLongStateOf(0L) }
     var lastNewerLoadTriggerUptimeMs by remember { mutableLongStateOf(0L) }
     val loadTriggerThrottleMs = 350L
+    val unreadBoundaryIndex = remember(
+        isComments,
+        groupedMessages,
+        state.messages,
+        state.unreadSeparatorCount,
+        state.unreadSeparatorLastReadInboxMessageId
+    ) {
+        if (isComments || state.unreadSeparatorCount <= 0) {
+            null // suppress in thread/comments mode
+        } else {
+            val boundaryItem = findFirstUnreadBoundary(
+                messages = state.messages,
+                groupedItems = groupedMessages,
+                firstUnreadMessageId = state.unreadSeparatorLastReadInboxMessageId
+            )
+            boundaryItem?.let { target ->
+                groupedMessages.indexOfFirst { it.firstMessageId == target.firstMessageId }
+                    .takeIf { it >= 0 }
+            }
+        }
+    }
+
 
     LaunchedEffect(
         scrollState,
@@ -172,6 +197,7 @@ fun ChatContentList(
         TopicsList(
             topics = state.topics,
             onTopicClick = { component.onTopicClick(it.id) },
+            topOverlayPadding = topOverlayPadding,
             modifier = modifier
         )
         return
@@ -183,7 +209,10 @@ fun ChatContentList(
             .fillMaxSize()
             .semantics { contentDescription = "ChatMessages" },
         reverseLayout = !isComments,
-        contentPadding = PaddingValues(vertical = 8.dp)
+        contentPadding = PaddingValues(
+            top = if (isComments) topOverlayPadding + 8.dp else 8.dp,
+            bottom = 8.dp
+        )
     ) {
         if (isComments && state.isLoadingOlder && groupedMessages.isNotEmpty()) {
             item(key = "loading_older_top") {
@@ -255,7 +284,9 @@ fun ChatContentList(
                     toProfile = toProfile,
                     isScrolling = isScrolling,
                     downloadUtils = downloadUtils,
-                    isAnyViewerOpen = isAnyViewerOpen
+                    isAnyViewerOpen = isAnyViewerOpen,
+                    showUnreadSeparator = index == unreadBoundaryIndex,
+                    unreadCount = state.unreadSeparatorCount
                 )
             }
         } else {
@@ -309,7 +340,9 @@ fun ChatContentList(
                     toProfile = toProfile,
                     isScrolling = isScrolling,
                     downloadUtils = downloadUtils,
-                    isAnyViewerOpen = isAnyViewerOpen
+                    isAnyViewerOpen = isAnyViewerOpen,
+                    showUnreadSeparator = index == unreadBoundaryIndex,
+                    unreadCount = state.unreadSeparatorCount
                 )
             }
         }
@@ -388,7 +421,9 @@ private fun MessageRowItem(
     toProfile: (Long) -> Unit,
     isScrolling: Boolean,
     downloadUtils: IDownloadUtils,
-    isAnyViewerOpen: Boolean = false
+    isAnyViewerOpen: Boolean = false,
+    showUnreadSeparator: Boolean,
+    unreadCount: Int
 ) {
     val mainMsg = remember(item) {
         if (item is GroupedMessageItem.Single) item.message else (item as GroupedMessageItem.Album).messages.last()
@@ -465,6 +500,11 @@ private fun MessageRowItem(
             Column(modifier = Modifier.weight(1f)) {
                 if (shouldShowDate(mainMsg, olderMsg)) {
                     DateSeparator(mainMsg.date)
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+
+                if (showUnreadSeparator) {
+                    UnreadMessagesSeparator(unreadCount = unreadCount)
                     Spacer(modifier = Modifier.height(16.dp))
                 }
 
@@ -1092,6 +1132,7 @@ private fun MessageModel.mediaCaption(): String? {
 fun TopicsList(
     topics: List<TopicModel>,
     onTopicClick: (TopicModel) -> Unit,
+    topOverlayPadding: Dp = 0.dp,
     modifier: Modifier = Modifier
 ) {
     val sortedTopics = remember(topics) {
@@ -1100,7 +1141,12 @@ fun TopicsList(
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+        contentPadding = PaddingValues(
+            start = 12.dp,
+            top = topOverlayPadding + 8.dp,
+            end = 12.dp,
+            bottom = 8.dp
+        ),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         itemsIndexed(sortedTopics, key = { _, topic -> topic.id }) { _, topic ->

@@ -330,15 +330,7 @@ class ChatCache : ChatsCacheDataSource, UserCacheDataSource {
             photo = entity.avatarPath?.let { path ->
                 TdApi.ChatPhotoInfo().apply {
                     small = TdApi.File().apply {
-                        id = entity.photoId
                         local = TdApi.LocalFile().apply { this.path = path }
-                    }
-                }
-            } ?: entity.photoId.takeIf { it != 0 }?.let { photoId ->
-                TdApi.ChatPhotoInfo().apply {
-                    small = TdApi.File().apply {
-                        id = photoId
-                        local = TdApi.LocalFile().apply { this.path = "" }
                     }
                 }
             }

@@ -12,6 +12,7 @@ import org.monogram.domain.models.StickerType
 class TdStickerRemoteSource(
     private val gateway: TelegramGateway
 ) : StickerRemoteSource {
+    private val inputLanguageCodes = buildTdInputLanguageCodes()
 
     override suspend fun getInstalledStickerSets(type: StickerType): List<StickerSetModel> {
         return coRunCatching {
@@ -66,8 +67,23 @@ class TdStickerRemoteSource(
     override suspend fun searchStickers(query: String): List<StickerModel> {
         return coRunCatching {
             gateway.execute(
-                TdApi.SearchStickers(TdApi.StickerTypeRegular(), "", query, emptyArray(), 0, 100)
+                TdApi.SearchStickers(
+                    TdApi.StickerTypeRegular(),
+                    "",
+                    query,
+                    inputLanguageCodes,
+                    0,
+                    100
+                )
             ).stickers.map { it.toDomain() }
+        }.getOrDefault(emptyList())
+    }
+
+    override suspend fun getStickerEmojiHints(query: String): List<String> {
+        return coRunCatching {
+            gateway.execute(
+                TdApi.GetAllStickerEmojis(TdApi.StickerTypeRegular(), query, 0, false)
+            ).emojis.toList()
         }.getOrDefault(emptyList())
     }
 

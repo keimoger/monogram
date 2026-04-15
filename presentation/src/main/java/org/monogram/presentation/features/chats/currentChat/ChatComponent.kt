@@ -15,6 +15,7 @@ import org.monogram.domain.models.MessageEntity
 import org.monogram.domain.models.MessageModel
 import org.monogram.domain.models.MessageSendOptions
 import org.monogram.domain.models.MessageViewerModel
+import org.monogram.domain.models.PollDraft
 import org.monogram.domain.models.StickerSetModel
 import org.monogram.domain.models.TopicModel
 import org.monogram.domain.models.UserModel
@@ -56,6 +57,18 @@ interface ChatComponent {
     )
 
     fun onSendGif(gif: GifModel)
+    fun onSendDocument(
+        documentPath: String,
+        caption: String = "",
+        captionEntities: List<MessageEntity> = emptyList(),
+        sendOptions: MessageSendOptions = MessageSendOptions()
+    )
+
+    fun onSendPoll(
+        poll: PollDraft,
+        sendOptions: MessageSendOptions = MessageSendOptions()
+    )
+
     fun onSendGifFile(
         path: String,
         caption: String = "",
@@ -221,6 +234,7 @@ interface ChatComponent {
         val memberCount: Int = 0,
         val onlineCount: Int = 0,
         val unreadCount: Int = 0,
+        val unreadSeparatorCount: Int = 0,
         val unreadMentionCount: Int = 0,
         val unreadReactionCount: Int = 0,
         val userStatus: String? = null,
@@ -321,6 +335,8 @@ interface ChatComponent {
         val isInlineBotLoading: Boolean = false,
         val isInstalledFromGooglePlay: Boolean = true,
         val attachMenuBots: List<AttachMenuBotModel> = emptyList(),
-        val scheduledMessages: List<MessageModel> = emptyList()
+        val scheduledMessages: List<MessageModel> = emptyList(),
+        val lastReadInboxMessageId: Long = 0L,
+        val unreadSeparatorLastReadInboxMessageId: Long = 0L,
     )
 }

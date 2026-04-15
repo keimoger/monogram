@@ -1,10 +1,29 @@
 package org.monogram.presentation.features.stickers.ui.menu
 
-import androidx.compose.animation.*
+import android.util.Log
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
@@ -14,8 +33,21 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,7 +67,6 @@ import kotlinx.coroutines.delay
 import org.koin.compose.koinInject
 import org.monogram.domain.models.GifModel
 import org.monogram.domain.repository.GifRepository
-import org.monogram.domain.repository.StickerRepository
 import org.monogram.presentation.R
 import org.monogram.presentation.features.chats.currentChat.components.VideoStickerPlayer
 import org.monogram.presentation.features.chats.currentChat.components.VideoType
@@ -47,7 +78,6 @@ fun GifsView(
     onGifSelected: (GifModel) -> Unit,
     onSearchFocused: (Boolean) -> Unit,
     contentPadding: PaddingValues = PaddingValues(0.dp),
-    stickerRepository: StickerRepository,
     gifRepository: GifRepository = koinInject()
 ) {
     var searchQuery by remember { mutableStateOf("") }
@@ -99,6 +129,17 @@ fun GifsView(
                 IntRange.EMPTY
             } else {
                 visibleItems.first().index..visibleItems.last().index
+            }
+        }
+    }
+    val preloadRange by remember {
+        derivedStateOf {
+            if (visibleRange == IntRange.EMPTY) {
+                IntRange.EMPTY
+            } else {
+                val start = maxOf(visibleRange.first - GIF_PRELOAD_BACKWARD_ITEMS, 0)
+                val end = visibleRange.last + GIF_PRELOAD_FORWARD_ITEMS
+                start..end
             }
         }
     }
@@ -164,15 +205,15 @@ fun GifsView(
                 ) {
                     itemsIndexed(
                         items = gifsToShow,
-                        key = { _, gif -> gif.id },
+                        key = { _, gif -> "${gif.inlineQueryId ?: 0L}_${gif.id}_${gif.fileId}_${gif.thumbFileId ?: 0L}" },
                         contentType = { _, _ -> "GifItem" }
                     ) { index, gif ->
                         GifItem(
                             gif = gif,
                             gifRepository = gifRepository,
-                            stickerRepository = stickerRepository,
                             onGifSelected = onGifClick,
-                            animate = index in visibleRange
+                            shouldPlay = index in visibleRange,
+                            shouldPreload = index in preloadRange
                         )
                     }
                 }
@@ -290,33 +331,62 @@ fun GifSearchBar(
 fun GifItem(
     gif: GifModel,
     gifRepository: GifRepository,
-    stickerRepository: StickerRepository,
     onGifSelected: (GifModel) -> Unit,
-    animate: Boolean = true
+    shouldPlay: Boolean = true,
+    shouldPreload: Boolean = true
 ) {
-    var gifPath by remember { mutableStateOf<String?>(null) }
-    var thumbPath by remember { mutableStateOf<String?>(null) }
-
-    LaunchedEffect(gif, animate) {
-        if (animate) {
-            gifRepository.getGifFile(gif).collect {
-                gifPath = it
-            }
-        }
+    val gifIdentity = remember(gif.inlineQueryId, gif.id, gif.fileId, gif.thumbFileId) {
+        "${gif.inlineQueryId ?: 0L}:${gif.id}:${gif.fileId}:${gif.thumbFileId ?: 0L}"
     }
 
-    LaunchedEffect(gif.thumbFileId) {
-        if (gif.thumbFileId != null) {
-            stickerRepository.getStickerFile(gif.thumbFileId!!).collect {
-                thumbPath = it
-            }
+    val gifPath by produceState<String?>(
+        initialValue = null,
+        key1 = gifIdentity,
+        key2 = shouldPreload
+    ) {
+        value = null
+        if (!shouldPreload) return@produceState
+
+        gifRepository.getGifFile(gif).collect { resolvedPath ->
+            value = resolvedPath
+            Log.d(
+                GIF_GRID_TAG,
+                "gifPath identity=$gifIdentity fileId=${gif.fileId} thumbFileId=${gif.thumbFileId} path=$resolvedPath"
+            )
+        }
+    }
+    val thumbPath by produceState<String?>(
+        initialValue = null,
+        key1 = gifIdentity,
+        key2 = shouldPreload
+    ) {
+        value = null
+        val thumbFileId = gif.thumbFileId
+        if (!shouldPreload || thumbFileId == null) return@produceState
+
+        gifRepository.getGifThumbnailFile(thumbFileId).collect { resolvedPath ->
+            value = resolvedPath
+            Log.d(
+                GIF_GRID_TAG,
+                "thumbPath identity=$gifIdentity fileId=${gif.fileId} thumbFileId=$thumbFileId path=$resolvedPath"
+            )
         }
     }
 
     val state = when {
-        gifPath != null -> GifState.Video
+        shouldPlay && gifPath != null -> GifState.Video
         thumbPath != null -> GifState.Thumbnail
+        gifPath != null -> GifState.Ready
         else -> GifState.Loading
+    }
+
+    LaunchedEffect(gifIdentity, gifPath, thumbPath, shouldPlay, shouldPreload, state) {
+        Log.d(
+            GIF_GRID_TAG,
+            "bind identity=$gifIdentity inlineQueryId=${gif.inlineQueryId} fileId=${gif.fileId} " +
+                    "thumbFileId=${gif.thumbFileId} shouldPlay=$shouldPlay shouldPreload=$shouldPreload " +
+                    "state=$state gifPath=$gifPath thumbPath=$thumbPath"
+        )
     }
 
     Box(
@@ -325,6 +395,11 @@ fun GifItem(
             .clip(RoundedCornerShape(12.dp))
             .background(MaterialTheme.colorScheme.surfaceContainerLow)
             .clickable {
+                Log.d(
+                    GIF_GRID_TAG,
+                    "click identity=$gifIdentity inlineQueryId=${gif.inlineQueryId} fileId=${gif.fileId} " +
+                            "thumbFileId=${gif.thumbFileId} gifPath=$gifPath thumbPath=$thumbPath"
+                )
                 onGifSelected(gif)
             }
     ) {
@@ -342,7 +417,8 @@ fun GifItem(
                         type = VideoType.Gif,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop,
-                        animate = animate,
+                        animate = shouldPlay,
+                        fileId = gif.fileId.toInt(),
                         thumbnailData = thumbPath
                     )
                 }
@@ -360,6 +436,13 @@ fun GifItem(
                         }
                     )
                 }
+                GifState.Ready -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                    )
+                }
                 GifState.Loading -> {
                     Box(
                         modifier = Modifier
@@ -375,5 +458,10 @@ fun GifItem(
 private enum class GifState {
     Loading,
     Thumbnail,
+    Ready,
     Video
 }
+
+private const val GIF_GRID_TAG = "GifGrid"
+private const val GIF_PRELOAD_FORWARD_ITEMS = 8
+private const val GIF_PRELOAD_BACKWARD_ITEMS = 2

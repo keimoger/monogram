@@ -26,6 +26,7 @@ import org.monogram.data.gateway.TelegramGateway
 import org.monogram.data.gateway.UpdateDispatcher
 import org.monogram.data.infra.FileDownloadQueue
 import org.monogram.data.infra.FileObserverHub
+import org.monogram.data.mapper.isValidFilePath
 import org.monogram.data.mapper.user.extractPersonalAvatarPath
 import org.monogram.data.mapper.user.mapUserFullInfoToChat
 import org.monogram.data.mapper.user.toDomain
@@ -124,12 +125,14 @@ class UserRepositoryImpl(
     override suspend fun getUser(userId: Long): UserModel? {
         if (userId <= 0) return null
         userLocal.getUser(userId)?.let {
+            refreshUserIfNeeded(userId, it)
             return mapUserModel(it, userLocal.getUserFullInfo(userId))
         }
 
         userLocal.loadUser(userId)?.let { entity ->
             val user = entity.toTdApi()
             cacheUser(user)
+            refreshUserIfNeeded(userId, user)
             return mapUserModel(user, userLocal.getUserFullInfo(userId))
         }
 
@@ -242,6 +245,33 @@ class UserRepositoryImpl(
         return user
     }
 
+    private fun refreshUserIfNeeded(userId: Long, user: TdApi.User) {
+        if (userId <= 0L) return
+        if (user.hasUsableAvatarPath()) return
+        if (user.hasStablePhotoIdentity()) return
+        if (userRequests.containsKey(userId)) return
+
+        val deferred = scope.async {
+            fetchAndCacheUser(userId)?.also { refreshed ->
+                handleUserUpdated(refreshed)
+            }
+        }
+
+        val previous = userRequests.putIfAbsent(userId, deferred)
+        if (previous != null) {
+            deferred.cancel()
+            return
+        }
+
+        scope.launch {
+            try {
+                deferred.await()
+            } finally {
+                userRequests.remove(userId, deferred)
+            }
+        }
+    }
+
     private suspend fun fetchAndCacheUserFullInfo(userId: Long): TdApi.UserFullInfo? {
         if (userId <= 0 || isNegativeCached(missingUserFullInfoUntilMs, userId)) return null
         val info = remote.getUserFullInfo(userId)
@@ -331,4 +361,13 @@ class UserRepositoryImpl(
         private const val KEY_CACHED_SIM_COUNTRY_ISO = "cached_sim_country_iso"
         private const val USER_UPDATE_BUFFER_SIZE = 10
     }
+}
+
+private fun TdApi.User.hasStablePhotoIdentity(): Boolean {
+    return (profilePhoto?.small?.id ?: 0) != 0 || (profilePhoto?.big?.id ?: 0) != 0
+}
+
+private fun TdApi.User.hasUsableAvatarPath(): Boolean {
+    return profilePhoto?.small?.local?.path?.let(::isValidFilePath) == true ||
+            profilePhoto?.big?.local?.path?.let(::isValidFilePath) == true
 }

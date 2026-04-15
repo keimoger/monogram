@@ -1,13 +1,32 @@
 package org.monogram.data.repository
 
 import android.util.Log
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import org.drinkless.tdlib.TdApi
 import org.monogram.core.DispatcherProvider
-import org.monogram.data.chats.*
+import org.monogram.data.chats.ChatCache
+import org.monogram.data.chats.ChatFileManager
+import org.monogram.data.chats.ChatFolderManager
+import org.monogram.data.chats.ChatListManager
+import org.monogram.data.chats.ChatModelFactory
+import org.monogram.data.chats.ChatPersistenceManager
+import org.monogram.data.chats.ChatSearchManager
+import org.monogram.data.chats.ChatTypingManager
+import org.monogram.data.chats.ChatUpdateHandler
+import org.monogram.data.chats.ForumTopicsManager
 import org.monogram.data.core.coRunCatching
 import org.monogram.data.datasource.cache.ChatLocalDataSource
 import org.monogram.data.datasource.remote.ChatRemoteSource
@@ -27,7 +46,19 @@ import org.monogram.domain.models.ChatModel
 import org.monogram.domain.models.ChatPermissionsModel
 import org.monogram.domain.models.FolderModel
 import org.monogram.domain.models.TopicModel
-import org.monogram.domain.repository.*
+import org.monogram.domain.repository.AppPreferencesProvider
+import org.monogram.domain.repository.CacheProvider
+import org.monogram.domain.repository.ChatCreationRepository
+import org.monogram.domain.repository.ChatFolderRepository
+import org.monogram.domain.repository.ChatListRepository
+import org.monogram.domain.repository.ChatOperationsRepository
+import org.monogram.domain.repository.ChatSearchRepository
+import org.monogram.domain.repository.ChatSettingsRepository
+import org.monogram.domain.repository.FolderChatsUpdate
+import org.monogram.domain.repository.FolderLoadingUpdate
+import org.monogram.domain.repository.ForumTopicsRepository
+import org.monogram.domain.repository.SearchMessagesResult
+import org.monogram.domain.repository.StringProvider
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
@@ -505,6 +536,8 @@ class ChatsListRepositoryImpl(
         val requestId = activeRequestId
         val chatList = activeChatList
         currentLimit = (currentLimit + limit).coerceAtMost(maxChatListLimit)
+        val requestedLimit =
+            currentLimit.coerceAtLeast(initialChatListLimit).coerceAtMost(maxChatListLimit)
         setLoadingState(folderId, requestId, true)
 
         scope.launch(dispatchers.io) {
@@ -520,7 +553,7 @@ class ChatsListRepositoryImpl(
                 }
             }
 
-            chatRemoteSource.loadChats(chatList, limit)
+            chatRemoteSource.loadChats(chatList, requestedLimit)
             setLoadingState(folderId, requestId, false)
             if (isRequestActive(folderId, requestId)) {
                 triggerUpdate()

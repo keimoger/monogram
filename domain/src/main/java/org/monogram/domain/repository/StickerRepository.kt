@@ -31,6 +31,7 @@ interface StickerRepository {
     suspend fun reorderStickerSets(stickerType: TdLibStickerType, stickerSetIds: List<Long>)
 
     suspend fun searchStickers(query: String): List<StickerModel>
+    suspend fun getStickerEmojiHints(query: String): List<String>
     suspend fun searchStickerSets(query: String): List<StickerSetModel>
 
     enum class TdLibStickerType {

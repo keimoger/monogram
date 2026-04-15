@@ -3,7 +3,11 @@ package org.monogram.data.repository
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -236,6 +240,10 @@ class StickerRepositoryImpl(
 
     override suspend fun searchStickers(query: String): List<StickerModel> {
         return remote.searchStickers(query)
+    }
+
+    override suspend fun getStickerEmojiHints(query: String): List<String> {
+        return remote.getStickerEmojiHints(query)
     }
 
     override suspend fun searchStickerSets(query: String): List<StickerSetModel> {

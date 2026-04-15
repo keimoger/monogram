@@ -181,6 +181,12 @@ class ChatModelFactory(
                         smallPhoto = user.profilePhoto?.small
                         photoId = smallPhoto?.id ?: 0
                     }
+                    val hasStablePhotoIdentity =
+                        (user.profilePhoto?.small?.id ?: 0) != 0 || (user.profilePhoto?.big?.id
+                            ?: 0) != 0
+                    if (!hasStablePhotoIdentity) {
+                        fetchUser(type.userId)
+                    }
                 } ?: run { fetchUser(type.userId) }
 
                 if (user != null) {

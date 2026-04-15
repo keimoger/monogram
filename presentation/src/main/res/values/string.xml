@@ -110,7 +110,10 @@
 
     <!-- Chat List -->
     <string name="forward_to_title">Forward to...</string>
-    <string name="chats_selected_format">%1$d chats selected</string>
+    <plurals name="chats_selected_format">
+        <item quantity="one">%1$d chats selected</item>
+        <item quantity="other">%1$d chats selected</item>
+    </plurals>
     <string name="action_send">Send</string>
     <string name="archived_chats_title">Archived Chats</string>
     <string name="new_chat_fab">New Chat</string>
@@ -236,6 +239,9 @@
     <string name="menu_repeat">+1</string>
     <string name="menu_select">Select</string>
     <string name="menu_more">More</string>
+    <string name="menu_view_sticker_pack">Sticker Pack</string>
+    <string name="menu_view_emoji_pack">Emoji Pack</string>
+    <string name="menu_view_used_packs">Used Packs</string>
     <string name="menu_delete">Delete</string>
     <string name="menu_view_comments">View Comments</string>
     <string name="menu_save_to_downloads">Save to Downloads</string>
@@ -789,6 +795,8 @@
     <string name="no_stickers_found_format">No stickers found for \"%1$s\"</string>
     <string name="recent_emojis_header">Recent Emojis</string>
     <string name="emoji_packs_header">Emoji Packs</string>
+    <string name="sticker_pack_title">Sticker Pack</string>
+    <string name="emoji_pack_title">Emoji Pack</string>
     <string name="archived_emojis_header">Archived Emojis</string>
     <string name="add_own_emoji_title">Add own emoji</string>
     <string name="add_own_emoji_subtitle">Create your own emoji packs using @Stickers bot</string>
@@ -1085,6 +1093,9 @@
     <string name="action_cancel_edit">Cancel edit</string>
     <string name="action_send_items_count">Attach %1$d items</string>
     <string name="action_send_media">Send media</string>
+    <string name="action_attach_file">File</string>
+    <string name="action_attach_file_count">%1$d files attached</string>
+    <string name="action_create_poll">Create poll</string>
     <string name="action_cancel">Cancel</string>
     <string name="action_copy">Copy</string>
     <string name="action_paste">Paste</string>
@@ -1113,6 +1124,58 @@
     <string name="gallery_partial_access_subtitle">Only selected photos and videos are visible.</string>
     <string name="gallery_title_attachments">Attachments</string>
     <string name="gallery_action_other_sources">Other sources</string>
+    <string name="poll_question_label">Question</string>
+    <string name="poll_options_label">Options</string>
+    <string name="poll_option_label">Option %1$d</string>
+    <string name="poll_add_option">Add option</string>
+    <string name="poll_description_label">Description (optional)</string>
+    <string name="poll_mode_quiz">Quiz mode</string>
+    <string name="poll_correct_option_label">Correct option number</string>
+    <string name="poll_explanation_label">Explanation (optional)</string>
+    <string name="poll_allows_revoting">Allow revoting</string>
+    <string name="poll_shuffle_options">Shuffle options</string>
+    <string name="poll_hide_results_until_close">Hide results until closed</string>
+    <string name="poll_closed_immediately">Send as closed</string>
+    <string name="poll_open_period_seconds">Open period</string>
+    <string name="poll_close_date_epoch">Close date</string>
+    <string name="poll_close_date_not_set">Not set</string>
+    <string name="poll_create_section_main">Question</string>
+    <string name="poll_create_section_options">Options</string>
+    <string name="poll_create_section_settings">Poll settings</string>
+    <string name="poll_create_section_schedule">Closing</string>
+    <string name="poll_create_section_quiz">Quiz</string>
+    <string name="poll_create_question_label">Question</string>
+    <string name="poll_create_description_label">Description (optional)</string>
+    <string name="poll_create_option_label">Option %1$d</string>
+    <string name="poll_create_add_option">Add option</string>
+    <string name="poll_create_anonymous">Anonymous voting</string>
+    <string name="poll_create_multiple_answers">Allow multiple answers</string>
+    <string name="poll_create_allows_revoting">Allow revoting</string>
+    <string name="poll_create_shuffle_options">Shuffle options</string>
+    <string name="poll_create_hide_results_until_close">Hide results until closed</string>
+    <string name="poll_create_close_date">Close date</string>
+    <string name="poll_create_close_date_not_set">Not set</string>
+    <string name="poll_create_quiz_mode">Quiz mode</string>
+    <string name="poll_create_correct_options">Correct answers</string>
+    <string name="poll_create_explanation_label">Explanation (optional)</string>
+    <string name="poll_create_subtitle">Compose the question, shape the answers, and decide when results unlock.</string>
+    <string name="poll_create_options_hint">Long-press the handle to reorder options.</string>
+    <string name="poll_create_settings_hint">Pick the voting rules before the poll goes live.</string>
+    <string name="poll_create_closing_hint">Set a deadline and optionally keep totals hidden until then.</string>
+    <string name="poll_create_quiz_hint">Choose the correct answers and add context if needed.</string>
+    <string name="poll_create_footer_ready">Ready to send</string>
+    <string name="poll_create_footer_disabled">Add a question, at least two options, and valid quiz answers.</string>
+    <string name="poll_create_title">Create poll</string>
+    <string name="poll_create_chip_quiz">Quiz</string>
+    <string name="poll_create_chip_multiple_answers">Multiple answers</string>
+    <string name="poll_create_chip_revoting">Revoting</string>
+    <string name="poll_create_chip_shuffled">Shuffled</string>
+    <string name="poll_create_chip_deadline">Deadline</string>
+    <string name="poll_create_chip_hidden_results">Hidden results</string>
+    <string name="poll_create_clear_date">Clear date</string>
+    <string name="poll_create_pick_date">Pick date</string>
+    <string name="poll_create_correct_answer_hint">Select the correct answers below.</string>
+    <string name="action_pick">Pick</string>
     <string name="gallery_filter_all">All</string>
     <string name="gallery_filter_photos">Photos</string>
     <string name="gallery_filter_videos">Videos</string>
@@ -1577,6 +1640,7 @@
     <string name="stickers_header_recent">Recent Stickers</string>
     <string name="stickers_header_all">Stickers</string>
     <string name="stickers_search_placeholder">Search stickers</string>
+    <string name="stickers_search_suggestions">Suggestions</string>
 
     <!-- Emojis View -->
     <string name="emojis_header_recent">Recent Emojis</string>
@@ -1781,6 +1845,12 @@
     <string name="poll_multiple_choice"> • Multiple Choice</string>
     <string name="poll_retract_vote">Retract Vote</string>
     <string name="poll_close_poll">Close Poll</string>
+    <string name="poll_meta_results_hidden_until_close">Results hidden until poll closes</string>
+    <string name="poll_meta_revoting_enabled">Revoting enabled</string>
+    <string name="poll_meta_shuffle_enabled">Options are shuffled</string>
+    <string name="poll_meta_open_period">Open period: %1$d</string>
+    <string name="poll_meta_closes_at">Closes at %1$s</string>
+    <string name="poll_meta_time_left">Time left: %1$s</string>
     <plurals name="poll_votes_count">
         <item quantity="one">%d vote</item>
         <item quantity="other">%d votes</item>
@@ -2081,4 +2151,5 @@
     <string name="auth_phone_code_invalid_error">Invalid confirmation code</string>
     <string name="auth_password_hash_invalid">Invalid password</string>
     <string name="unexpected_error">An unexpected error occurred</string>
+    <string name="unread_messages">%1$d unread messages</string>
 </resources>

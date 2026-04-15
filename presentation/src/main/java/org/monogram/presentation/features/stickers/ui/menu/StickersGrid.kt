@@ -1,11 +1,31 @@
 package org.monogram.presentation.features.stickers.ui.menu
 
-import androidx.compose.animation.*
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.grid.*
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -15,8 +35,25 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.StickyNote2
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -58,6 +95,7 @@ fun StickersView(
 
     var searchResultsStickers by remember { mutableStateOf<List<StickerModel>>(emptyList()) }
     var searchResultsSets by remember { mutableStateOf<List<StickerSetModel>>(emptyList()) }
+    var searchEmojiHints by remember { mutableStateOf<List<String>>(emptyList()) }
 
     LaunchedEffect(Unit) {
         stickerRepository.loadInstalledStickerSets()
@@ -75,13 +113,28 @@ fun StickersView(
 
     LaunchedEffect(debouncedSearchQuery) {
         if (debouncedSearchQuery.length >= 2) {
+            searchEmojiHints = stickerRepository.getStickerEmojiHints(debouncedSearchQuery)
             searchResultsStickers = stickerRepository.searchStickers(debouncedSearchQuery)
             searchResultsSets = stickerRepository.searchStickerSets(debouncedSearchQuery)
         } else {
+            searchEmojiHints = emptyList()
             searchResultsStickers = emptyList()
             searchResultsSets = emptyList()
         }
     }
+
+    val localSearchResults by remember(searchQuery, stickerSets) {
+        derivedStateOf {
+            buildLocalStickerFallback(
+                query = searchQuery,
+                stickerSets = stickerSets
+            )
+        }
+    }
+    val shouldUseLocalFallback = searchQuery.isNotBlank() && (
+            debouncedSearchQuery.length < 2 ||
+                    (searchResultsStickers.isEmpty() && searchResultsSets.isEmpty())
+            )
 
     val firstVisibleItemIndex by remember { derivedStateOf { gridState.firstVisibleItemIndex } }
     LaunchedEffect(firstVisibleItemIndex, stickerSets, recentStickers, searchQuery) {
@@ -172,6 +225,15 @@ fun StickersView(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         if (searchQuery.isNotEmpty()) {
+                            if (searchEmojiHints.isNotEmpty()) {
+                                item(span = { GridItemSpan(maxLineSpan) }) {
+                                    StickerEmojiHintsRow(
+                                        hints = searchEmojiHints,
+                                        onHintClick = { hint -> searchQuery = hint }
+                                    )
+                                }
+                            }
+
                             if (searchResultsStickers.isNotEmpty()) {
                                 item(span = { GridItemSpan(maxLineSpan) }) {
                                     PackHeader(stringResource(R.string.stickers_header_all))
@@ -199,19 +261,23 @@ fun StickersView(
                                 }
                             }
 
-                            if (searchResultsStickers.isEmpty() && searchResultsSets.isEmpty() && debouncedSearchQuery.isNotEmpty()) {
-                                val filtered = stickerSets.flatMap { it.stickers }.filter {
-                                    it.emoji.contains(debouncedSearchQuery) || it.id.toString()
-                                        .contains(debouncedSearchQuery)
-                                }.distinctBy { it.id }
-
-                                items(filtered, key = { "search_local_${it.id}" }) { sticker ->
-                                    StickerGridItem(sticker, onStickerSelected, {
-                                        scope.launch {
-                                            val set = stickerRepository.getStickerSet(sticker.id)
-                                            previewStickerSet = set
-                                        }
-                                    })
+                            if (shouldUseLocalFallback) {
+                                localSearchResults.forEach { set ->
+                                    item(
+                                        key = "fallback_header_${set.id}",
+                                        span = { GridItemSpan(maxLineSpan) }
+                                    ) {
+                                        PackHeader(set.title, onClick = { previewStickerSet = set })
+                                    }
+                                    items(
+                                        set.stickers,
+                                        key = { "fallback_set_${set.id}_${it.id}" }) { sticker ->
+                                        StickerGridItem(sticker, onStickerSelected, {
+                                            scope.launch {
+                                                previewStickerSet = set
+                                            }
+                                        })
+                                    }
                                 }
                             }
                         } else {
@@ -261,6 +327,31 @@ fun StickersView(
     }
 }
 
+private fun buildLocalStickerFallback(
+    query: String,
+    stickerSets: List<StickerSetModel>
+): List<StickerSetModel> {
+    val normalizedQuery = query.trim()
+    if (normalizedQuery.isBlank()) return emptyList()
+
+    return stickerSets.mapNotNull { set ->
+        val setMatches = set.title.contains(normalizedQuery, ignoreCase = true) ||
+                set.name.contains(normalizedQuery, ignoreCase = true)
+        val stickers = if (setMatches) {
+            set.stickers
+        } else {
+            set.stickers.filter { sticker ->
+                sticker.emoji.contains(normalizedQuery, ignoreCase = true)
+            }
+        }
+        if (stickers.isEmpty()) {
+            null
+        } else {
+            set.copy(stickers = stickers)
+        }
+    }
+}
+
 @Composable
 fun PackHeader(
     title: String,
@@ -305,6 +396,30 @@ fun StickerGridItem(
             onClick = { path -> onStickerSelected(path) },
             onLongClick = onStickerLongClick
         )
+    }
+}
+
+@Composable
+private fun StickerEmojiHintsRow(
+    hints: List<String>,
+    onHintClick: (String) -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        PackHeader(stringResource(R.string.stickers_search_suggestions))
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(hints, key = { it }) { hint ->
+                FilterChip(
+                    selected = false,
+                    onClick = { onHintClick(hint) },
+                    label = { Text(hint) }
+                )
+            }
+        }
     }
 }
 

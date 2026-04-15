@@ -10,6 +10,7 @@ import android.graphics.SurfaceTexture
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.view.Gravity
 import android.view.Surface
 import android.view.TextureView
@@ -23,7 +24,15 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -33,7 +42,12 @@ import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.media3.common.*
+import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.database.DatabaseProvider
 import androidx.media3.database.StandaloneDatabaseProvider
@@ -107,13 +121,34 @@ fun VideoStickerPlayer(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val currentPath by rememberUpdatedState(path)
+    val currentFileId by rememberUpdatedState(fileId)
+    val currentThumbnailData by rememberUpdatedState(thumbnailData)
+    val effectiveStreamingFileId = remember(currentPath, fileId) {
+        if (currentPath.startsWith("http://streaming/")) fileId else 0
+    }
+    val isGif = type == VideoType.Gif
 
-    var shouldLoadPlayer by remember { mutableStateOf(false) }
-    var isVideoFrameReady by remember { mutableStateOf(false) }
+    var shouldLoadPlayer by remember(currentPath, fileId, type, thumbnailData) {
+        mutableStateOf(
+            false
+        )
+    }
+    var isVideoFrameReady by remember(currentPath, fileId, type, thumbnailData) {
+        mutableStateOf(
+            false
+        )
+    }
 
-    LaunchedEffect(animate, currentPath) {
+    LaunchedEffect(animate, currentPath, fileId, type, thumbnailData) {
         shouldLoadPlayer = false
         isVideoFrameReady = false
+        if (isGif) {
+            Log.d(
+                GIF_PLAYER_TAG,
+                "schedule path=$currentPath fileId=$fileId streamingFileId=$effectiveStreamingFileId " +
+                        "animate=$animate thumb=$thumbnailData"
+            )
+        }
         if (animate) {
             delay(80)
             if (isActive) shouldLoadPlayer = true
@@ -122,129 +157,206 @@ fun VideoStickerPlayer(
 
     Box(modifier = modifier) {
         if (shouldLoadPlayer) {
-            val exoPlayer = remember(currentPath) { videoPlayerPool.acquire(fileId) }
-            val isDisposed = remember { AtomicBoolean(false) }
-            val textureViewRef = remember { mutableStateOf<VideoGLTextureView?>(null) }
-
-            LaunchedEffect(volume) {
-                if (exoPlayer.volume != volume) exoPlayer.volume = volume
-            }
-
-            LaunchedEffect(animate, exoPlayer) {
-                if (animate) exoPlayer.play() else exoPlayer.pause()
-            }
-
-            LaunchedEffect(exoPlayer, reportProgress) {
-                if (!reportProgress) return@LaunchedEffect
-
-                while (isActive && !isDisposed.get()) {
-                    if (exoPlayer.isPlaying) {
-                        onProgressUpdate(exoPlayer.currentPosition)
-                    }
-                    delay(1000)
+            key(currentPath, fileId, type, thumbnailData) {
+                val exoPlayer = remember(currentPath, fileId, type) {
+                    videoPlayerPool.acquire(effectiveStreamingFileId)
                 }
-            }
+                val isDisposed = remember(currentPath, fileId, type) { AtomicBoolean(false) }
+                val textureViewRef = remember(
+                    currentPath,
+                    fileId,
+                    type
+                ) { mutableStateOf<VideoGLTextureView?>(null) }
 
-            DisposableEffect(currentPath, exoPlayer, animate) {
-                isDisposed.set(false)
-
-                val isNetworkPath = currentPath.startsWith("http") || currentPath.startsWith("content")
-                if (!isNetworkPath && !File(currentPath).exists()) {
-                    isDisposed.set(true)
-                    return@DisposableEffect onDispose {}
+                LaunchedEffect(volume) {
+                    if (exoPlayer.volume != volume) exoPlayer.volume = volume
                 }
 
-                val uri = if (isNetworkPath) {
-                    currentPath.toUri()
-                } else {
-                    Uri.fromFile(File(currentPath))
+                LaunchedEffect(animate, exoPlayer) {
+                    if (animate) exoPlayer.play() else exoPlayer.pause()
                 }
 
-                val mediaItem = MediaItem.Builder()
-                    .setUri(uri)
-                    .setMimeType(getMimeType(currentPath) ?: MimeTypes.VIDEO_MP4)
-                    .build()
+                LaunchedEffect(exoPlayer, reportProgress) {
+                    if (!reportProgress) return@LaunchedEffect
 
-                val mediaSource = videoPlayerPool.getMediaSourceFactory(fileId)
-                    .createMediaSource(mediaItem)
-
-                exoPlayer.apply {
-                    setMediaSource(mediaSource)
-                    prepare()
-                    playWhenReady = animate
-                    repeatMode = if (shouldLoop) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
-                    this.volume = volume
-                }
-
-                val playerListener = object : Player.Listener {
-                    override fun onVideoSizeChanged(videoSize: VideoSize) {
-                        textureViewRef.value?.setVideoSize(videoSize.width, videoSize.height)
-                    }
-
-                    override fun onRenderedFirstFrame() {
-                        if (!isDisposed.get()) isVideoFrameReady = true
-                    }
-
-                    override fun onPlayerError(error: PlaybackException) {
-                        if (error.cause is FileNotFoundException) {
-                            isVideoFrameReady = false
+                    while (isActive && !isDisposed.get()) {
+                        if (exoPlayer.isPlaying) {
+                            onProgressUpdate(exoPlayer.currentPosition)
                         }
+                        delay(1000)
                     }
+                }
 
-                    override fun onIsPlayingChanged(isPlaying: Boolean) {
-                        if (isPlaying && !isVideoFrameReady && !isDisposed.get()) {
-                            Handler(Looper.getMainLooper()).postDelayed({
-                                isVideoFrameReady = true
-                            }, 50)
+                DisposableEffect(currentPath, exoPlayer, animate, effectiveStreamingFileId) {
+                    isDisposed.set(false)
+                    val effectPath = currentPath
+                    val effectFileId = fileId
+                    val effectThumbnailData = thumbnailData
+
+                    val isNetworkPath =
+                        currentPath.startsWith("http") || currentPath.startsWith("content")
+                    if (!isNetworkPath && !File(currentPath).exists()) {
+                        if (isGif) {
+                            Log.d(
+                                GIF_PLAYER_TAG,
+                                "skipMissing path=$effectPath fileId=$effectFileId thumb=$effectThumbnailData"
+                            )
                         }
+                        isDisposed.set(true)
+                        return@DisposableEffect onDispose {}
                     }
-                }
-                exoPlayer.addListener(playerListener)
 
-                val lifecycleObserver = LifecycleEventObserver { _, event ->
-                    if (isDisposed.get()) return@LifecycleEventObserver
-                    when (event) {
-                        Lifecycle.Event.ON_RESUME -> if (animate) exoPlayer.play()
-                        Lifecycle.Event.ON_PAUSE -> exoPlayer.pause()
-                        else -> Unit
+                    val uri = if (isNetworkPath) {
+                        currentPath.toUri()
+                    } else {
+                        Uri.fromFile(File(currentPath))
                     }
-                }
-                lifecycleOwner.lifecycle.addObserver(lifecycleObserver)
 
-                onDispose {
-                    isDisposed.set(true)
-                    isVideoFrameReady = false
-                    lifecycleOwner.lifecycle.removeObserver(lifecycleObserver)
-                    exoPlayer.removeListener(playerListener)
-                    exoPlayer.setVideoSurface(null)
-                    videoPlayerPool.release(exoPlayer)
-                }
-            }
+                    val mediaItem = MediaItem.Builder()
+                        .setUri(uri)
+                        .setMimeType(getMimeType(currentPath) ?: MimeTypes.VIDEO_MP4)
+                        .build()
 
-            AndroidView(
-                factory = { ctx ->
-                    VideoGLTextureView(ctx).apply {
-                        layoutParams = FrameLayout.LayoutParams(
-                            ViewGroup.LayoutParams.MATCH_PARENT,
-                            ViewGroup.LayoutParams.MATCH_PARENT,
-                            Gravity.CENTER
+                    val mediaSource =
+                        videoPlayerPool.getMediaSourceFactory(effectiveStreamingFileId)
+                            .createMediaSource(mediaItem)
+
+                    if (isGif) {
+                        Log.d(
+                            GIF_PLAYER_TAG,
+                            "prepare path=$effectPath fileId=$effectFileId streamingFileId=$effectiveStreamingFileId " +
+                                    "isNetwork=$isNetworkPath thumb=$effectThumbnailData"
                         )
-                        isOpaque = false
-                        this.contentScale = contentScale
-                        this.configure(type.useAlphaChannel, type.removeBlackBackground)
+                    }
+                    exoPlayer.apply {
+                        setVideoSurface(null)
+                        stop()
+                        clearMediaItems()
+                        setMediaSource(mediaSource)
+                        prepare()
+                        playWhenReady = animate
+                        repeatMode =
+                            if (shouldLoop) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+                        this.volume = volume
+                    }
 
-                        this.onSurfaceReady = { surface ->
+                    val playerListener = object : Player.Listener {
+                        override fun onVideoSizeChanged(videoSize: VideoSize) {
+                            textureViewRef.value?.setVideoSize(videoSize.width, videoSize.height)
+                        }
+
+                        override fun onRenderedFirstFrame() {
+                            if (!isDisposed.get()) {
+                                isVideoFrameReady = true
+                                if (isGif) {
+                                    Log.d(
+                                        GIF_PLAYER_TAG,
+                                        "firstFrame path=$effectPath fileId=$effectFileId thumb=$effectThumbnailData"
+                                    )
+                                }
+                            }
+                        }
+
+                        override fun onPlayerError(error: PlaybackException) {
+                            if (error.cause is FileNotFoundException) {
+                                isVideoFrameReady = false
+                            }
+                            if (isGif) {
+                                Log.e(
+                                    GIF_PLAYER_TAG,
+                                    "playerError path=$effectPath fileId=$effectFileId thumb=$effectThumbnailData",
+                                    error
+                                )
+                            }
+                        }
+
+                        override fun onIsPlayingChanged(isPlaying: Boolean) {
+                            if (isPlaying && !isVideoFrameReady && !isDisposed.get()) {
+                                Handler(Looper.getMainLooper()).postDelayed({
+                                    if (
+                                        !isDisposed.get() &&
+                                        currentPath == effectPath &&
+                                        currentFileId == effectFileId &&
+                                        currentThumbnailData == effectThumbnailData
+                                    ) {
+                                        isVideoFrameReady = true
+                                        if (isGif) {
+                                            Log.d(
+                                                GIF_PLAYER_TAG,
+                                                "playingFallbackReady path=$effectPath fileId=$effectFileId thumb=$effectThumbnailData"
+                                            )
+                                        }
+                                    }
+                                }, 50)
+                            }
+                        }
+                    }
+                    exoPlayer.addListener(playerListener)
+
+                    val lifecycleObserver = LifecycleEventObserver { _, event ->
+                        if (isDisposed.get()) return@LifecycleEventObserver
+                        when (event) {
+                            Lifecycle.Event.ON_RESUME -> if (animate) exoPlayer.play()
+                            Lifecycle.Event.ON_PAUSE -> exoPlayer.pause()
+                            else -> Unit
+                        }
+                    }
+                    lifecycleOwner.lifecycle.addObserver(lifecycleObserver)
+
+                    onDispose {
+                        isDisposed.set(true)
+                        isVideoFrameReady = false
+                        if (isGif) {
+                            Log.d(
+                                GIF_PLAYER_TAG,
+                                "dispose path=$effectPath fileId=$effectFileId thumb=$effectThumbnailData"
+                            )
+                        }
+                        lifecycleOwner.lifecycle.removeObserver(lifecycleObserver)
+                        exoPlayer.removeListener(playerListener)
+                        exoPlayer.setVideoSurface(null)
+                        exoPlayer.stop()
+                        exoPlayer.clearMediaItems()
+                        videoPlayerPool.release(exoPlayer)
+                    }
+                }
+
+                AndroidView(
+                    factory = { ctx ->
+                        VideoGLTextureView(ctx).apply {
+                            layoutParams = FrameLayout.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                Gravity.CENTER
+                            )
+                            isOpaque = false
+                            this.contentScale = contentScale
+                            this.configure(type.useAlphaChannel, type.removeBlackBackground)
+                            this.onSurfaceReady = { surface ->
+                                if (!isDisposed.get()) {
+                                    exoPlayer.setVideoSurface(surface)
+                                } else {
+                                    surface.release()
+                                }
+                            }
+                            textureViewRef.value = this
+                        }
+                    },
+                    update = { view ->
+                        view.contentScale = contentScale
+                        view.configure(type.useAlphaChannel, type.removeBlackBackground)
+                        view.onSurfaceReady = { surface ->
                             if (!isDisposed.get()) {
                                 exoPlayer.setVideoSurface(surface)
                             } else {
                                 surface.release()
                             }
                         }
-                        textureViewRef.value = this
-                    }
-                },
-                modifier = Modifier.fillMaxSize()
-            )
+                        textureViewRef.value = view
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
         }
 
         AnimatedVisibility(
@@ -255,6 +367,14 @@ fun VideoStickerPlayer(
         ) {
             val thumbnailCacheKey = remember(currentPath, thumbnailData, fileId) {
                 namespacedCacheKey("video_sticker_thumb:$fileId", thumbnailData ?: currentPath)
+            }
+            LaunchedEffect(currentPath, thumbnailData, fileId, isVideoFrameReady) {
+                if (isGif && !isVideoFrameReady) {
+                    Log.d(
+                        GIF_PLAYER_TAG,
+                        "thumbnailOverlay path=$currentPath fileId=$fileId thumb=$thumbnailData cacheKey=$thumbnailCacheKey"
+                    )
+                }
             }
             AsyncImage(
                 model = ImageRequest.Builder(context)
@@ -278,6 +398,8 @@ fun VideoStickerPlayer(
         }
     }
 }
+
+private const val GIF_PLAYER_TAG = "GifPlayer"
 
 @OptIn(UnstableApi::class)
 class VideoPlayerPool(val context: Context, val exoPlayerCache: ExoPlayerCache, val streamingRepository: PlayerDataSourceFactory) {

@@ -51,6 +51,7 @@ data class StickerModel(
 @Serializable
 data class GifModel(
     val id: String,
+    val inlineQueryId: Long? = null,
     val fileId: Long,
     val thumbFileId: Long?,
     val width: Int,

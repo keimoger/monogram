@@ -1,8 +1,19 @@
 package org.monogram.presentation.features.stickers.ui.menu
 
-import androidx.compose.animation.*
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.layout.*
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.StickyNote2
@@ -11,7 +22,14 @@ import androidx.compose.material.icons.outlined.Gif
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,6 +56,7 @@ fun StickerEmojiMenu(
     val stickersAndGifsAllowed = !emojiOnlyMode && canSendStickers
     var selectedTab by remember(stickersAndGifsAllowed) { mutableIntStateOf(if (stickersAndGifsAllowed) 0 else 1) }
     var isSearchMode by remember { mutableStateOf(false) }
+    var searchResetVersion by remember { mutableIntStateOf(0) }
     val tabs = if (!stickersAndGifsAllowed) {
         listOf(Triple(stringResource(R.string.sticker_menu_tab_emojis), Icons.Outlined.EmojiEmotions, 1))
     } else {
@@ -52,6 +71,16 @@ fun StickerEmojiMenu(
         if (!stickersAndGifsAllowed && selectedTab != 1) {
             selectedTab = 1
         }
+    }
+
+    fun exitSearchMode() {
+        isSearchMode = false
+        searchResetVersion += 1
+        onSearchFocused(false)
+    }
+
+    BackHandler(enabled = isSearchMode) {
+        exitSearchMode()
     }
 
     Surface(
@@ -69,36 +98,46 @@ fun StickerEmojiMenu(
         tonalElevation = 2.dp
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            Box(modifier = Modifier.fillMaxSize()) {
-                when (selectedTab) {
-                    0 -> if (stickersAndGifsAllowed) StickersView(
-                        onStickerSelected = onStickerSelected,
-                        onSearchFocused = { focused ->
-                            isSearchMode = focused
-                            onSearchFocused(focused)
-                        },
-                        contentPadding = PaddingValues(bottom = 76.dp)
-                    ) else Unit
+            key(selectedTab, searchResetVersion) {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    when (selectedTab) {
+                        0 -> if (stickersAndGifsAllowed) StickersView(
+                            onStickerSelected = {
+                                onStickerSelected(it)
+                                if (isSearchMode) exitSearchMode()
+                            },
+                            onSearchFocused = { focused ->
+                                isSearchMode = focused
+                                onSearchFocused(focused)
+                            },
+                            contentPadding = PaddingValues(bottom = 76.dp)
+                        ) else Unit
 
-                    1 -> EmojisGrid(
-                        onEmojiSelected = onEmojiSelected,
-                        emojiOnlyMode = emojiOnlyMode,
-                        onSearchFocused = { focused ->
-                            isSearchMode = focused
-                            onSearchFocused(focused)
-                        },
-                        contentPadding = PaddingValues(bottom = 76.dp)
-                    )
+                        1 -> EmojisGrid(
+                            onEmojiSelected = { emoji, sticker ->
+                                onEmojiSelected(emoji, sticker)
+                                if (isSearchMode) exitSearchMode()
+                            },
+                            emojiOnlyMode = emojiOnlyMode,
+                            onSearchFocused = { focused ->
+                                isSearchMode = focused
+                                onSearchFocused(focused)
+                            },
+                            contentPadding = PaddingValues(bottom = 76.dp)
+                        )
 
-                    2 -> if (stickersAndGifsAllowed) GifsView(
-                        onGifSelected = onGifSelected,
-                        onSearchFocused = { focused ->
-                            isSearchMode = focused
-                            onSearchFocused(focused)
-                        },
-                        contentPadding = PaddingValues(bottom = 76.dp),
-                        stickerRepository = stickerRepository
-                    ) else Unit
+                        2 -> if (stickersAndGifsAllowed) GifsView(
+                            onGifSelected = {
+                                onGifSelected(it)
+                                if (isSearchMode) exitSearchMode()
+                            },
+                            onSearchFocused = { focused ->
+                                isSearchMode = focused
+                                onSearchFocused(focused)
+                            },
+                            contentPadding = PaddingValues(bottom = 76.dp)
+                        ) else Unit
+                    }
                 }
             }
 

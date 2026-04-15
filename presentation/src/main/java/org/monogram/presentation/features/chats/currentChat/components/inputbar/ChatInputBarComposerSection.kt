@@ -4,13 +4,11 @@ import android.net.Uri
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
-import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -36,7 +34,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.TextFieldValue
@@ -63,6 +60,7 @@ fun ChatInputBarComposerSection(
     editingMessage: MessageModel?,
     replyMessage: MessageModel?,
     pendingMediaPaths: List<String>,
+    pendingDocumentPaths: List<String>,
     mentionSuggestions: List<UserModel>,
     filteredCommands: List<BotCommandModel>,
     currentInlineBotUsername: String?,
@@ -104,7 +102,9 @@ fun ChatInputBarComposerSection(
     onCancelEdit: () -> Unit,
     onCancelReply: () -> Unit,
     onCancelMedia: () -> Unit,
+    onCancelDocuments: () -> Unit,
     onMediaOrderChange: (List<String>) -> Unit,
+    onDocumentOrderChange: (List<String>) -> Unit,
     onMediaClick: (String) -> Unit,
     onPasteImages: (List<Uri>) -> Unit,
     onMentionClick: (UserModel) -> Unit,
@@ -140,7 +140,11 @@ fun ChatInputBarComposerSection(
         modifier = modifier,
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 2.dp,
-        shape = if (isTablet) RoundedCornerShape(16.dp) else RectangleShape
+        shape = if (isTablet) {
+            RoundedCornerShape(16.dp)
+        } else {
+            RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
+        }
     ) {
         Column(
             modifier = Modifier
@@ -152,10 +156,13 @@ fun ChatInputBarComposerSection(
                 editingMessage = editingMessage,
                 replyMessage = replyMessage,
                 pendingMediaPaths = pendingMediaPaths,
+                pendingDocumentPaths = pendingDocumentPaths,
                 onCancelEdit = onCancelEdit,
                 onCancelReply = onCancelReply,
                 onCancelMedia = onCancelMedia,
+                onCancelDocuments = onCancelDocuments,
                 onMediaOrderChange = onMediaOrderChange,
+                onDocumentOrderChange = onDocumentOrderChange,
                 onMediaClick = onMediaClick
             )
 
@@ -211,19 +218,6 @@ fun ChatInputBarComposerSection(
                         .padding(horizontal = 8.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    AnimatedVisibility(
-                        visible = !voiceRecorder.isRecording,
-                        enter = fadeIn(tween(250)) + expandHorizontally(tween(250)),
-                        exit = fadeOut(tween(200)) + shrinkHorizontally(tween(200))
-                    ) {
-                        InputBarLeadingIcons(
-                            editingMessage = editingMessage,
-                            pendingMediaPaths = pendingMediaPaths,
-                            canSendMedia = canSendMedia,
-                            onAttachClick = onAttachClick
-                        )
-                    }
-
                     Box(
                         modifier = Modifier
                             .weight(1f)
@@ -259,13 +253,17 @@ fun ChatInputBarComposerSection(
                                     canSendStickers = canSendStickers,
                                     canWriteText = canWriteText,
                                     isStickerMenuVisible = isStickerMenuVisible,
+                                    editingMessage = editingMessage,
+                                    canSendMedia = canSendMedia,
                                     onStickerMenuToggle = onStickerMenuToggle,
+                                    onAttachClick = onAttachClick,
                                     onShowBotCommands = onShowBotCommands,
                                     onOpenMiniApp = onOpenMiniApp,
                                     knownCustomEmojis = knownCustomEmojis,
                                     emojiFontFamily = emojiFontFamily,
                                     focusRequester = focusRequester,
                                     pendingMediaPaths = pendingMediaPaths,
+                                    pendingDocumentPaths = pendingDocumentPaths,
                                     canPasteMediaFromClipboard = canPasteMediaFromClipboard,
                                     onPasteImages = onPasteImages,
                                     onFocus = onInputFocus,
@@ -294,6 +292,7 @@ fun ChatInputBarComposerSection(
                                 textValue = textValue,
                                 editingMessage = editingMessage,
                                 pendingMediaPaths = pendingMediaPaths,
+                                pendingDocumentPaths = pendingDocumentPaths,
                                 isOverCharLimit = isOverMessageLimit,
                                 canWriteText = canWriteText,
                                 canSendVoice = canSendVoice,

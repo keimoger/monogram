@@ -1,7 +1,13 @@
 package org.monogram.presentation.features.stickers.core
 
 import kotlinx.serialization.Serializable
-import org.monogram.domain.models.*
+import org.monogram.domain.models.GifModel
+import org.monogram.domain.models.RecentEmojiModel
+import org.monogram.domain.models.StickerFormat
+import org.monogram.domain.models.StickerModel
+import org.monogram.domain.models.StickerSetInfoModel
+import org.monogram.domain.models.StickerSetModel
+import org.monogram.domain.models.StickerType
 
 @Serializable
 data class StickerSetUiModel(
@@ -52,6 +58,7 @@ data class StickerUiModel(
 @Serializable
 data class GifUiModel(
     val id: String,
+    val inlineQueryId: Long? = null,
     val fileId: Long,
     val thumbFileId: Long?,
     val width: Int,
@@ -94,6 +101,7 @@ fun StickerModel.toUi() = StickerUiModel(
 
 fun GifModel.toUi() = GifUiModel(
     id = id,
+    inlineQueryId = inlineQueryId,
     fileId = fileId,
     thumbFileId = thumbFileId,
     width = width,
@@ -139,6 +147,7 @@ fun StickerUiModel.toDomain() = StickerModel(
 
 fun GifUiModel.toDomain() = GifModel(
     id = id,
+    inlineQueryId = inlineQueryId,
     fileId = fileId,
     thumbFileId = thumbFileId,
     width = width,

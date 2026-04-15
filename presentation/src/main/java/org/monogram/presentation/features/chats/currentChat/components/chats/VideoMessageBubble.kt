@@ -245,7 +245,7 @@ fun VideoMessageBubble(
                                             currentPositionSeconds = seconds
                                         }
                                     },
-                                    fileId = if (!hasPath && content.supportsStreaming) content.fileId else 0,
+                                    fileId = content.fileId,
                                     thumbnailData = content.minithumbnail
                                 )
 
